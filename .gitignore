@@ -1,0 +1,19 @@
+# secrets — never commit
+.env
+data/keys.txt
+data/proxy_stats.json
+data/proxy_stats.tmp
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
