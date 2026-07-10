@@ -103,7 +103,19 @@ response = await handle_non_stream(DEFAULT_MODEL, payload, rid, "hf", started)
 
 **Port:** `8788` (one above current, avoids collision with the still-running `api_maker` on 8787 — both can coexist during migration).
 
-**Entry point unchanged:** `python -m proxy.keyhive_proxy` → uvicorn → FastAPI app.
+**Port `8787` is hardcoded in 6 locations — all must move to `8788` or things silently break:**
+1. `systemd/keyhive-proxy.service:17` — `Environment=KEYHIVE_PROXY_PORT=8787`
+2. `proxy/keyhive_proxy.py:47` — `PORT = int(os.getenv("KEYHIVE_PROXY_PORT", "8787"))` default
+3. `bin/keyhive:22` — `PROXY_URL="${KEYHIVE_PROXY_URL:-http://127.0.0.1:8787}"`
+4. `bin/keyhive:782` — `if [ "${ANTHROPIC_BASE_URL:-}" = "http://127.0.0.1:8787" ]` (equality check, easy to miss)
+5. `setup/installer.py:371, 410, 444` — writes 8787 into `.env`, shell rc (`ANTHROPIC_BASE_URL` export), and the install banner
+6. `README.md` (many references)
+
+Other ports in the legacy repo (both being removed): `8080` = web UI (`keyhive-web.service`, binds `0.0.0.0`), `9333` = Chrome CDP for the `.js` scanner scripts. No `8000/8081/9000` in real code (those hits were inside Chrome profile noise).
+
+**Installer safety:** `setup/installer.py` only runs `systemctl daemon-reload` — it never `enable`s or `start`s services. So installing the new repo will NOT auto-clobber the running 8787 proxy. Safe to install side-by-side, cutover manually.
+
+**Entry point unchanged:** `python -m proxy.keyhive_proxy` → uvicorn → FastAPI app. (Note: uses `uvicorn.Server(config).run()`, not `uvicorn.run()`.)
 
 **Provider model:** single provider, no router. `handle_non_stream`/`handle_stream` call NVIDIA directly. `FallbackManager` deleted entirely — with one provider there's nothing to arbitrate.
 
