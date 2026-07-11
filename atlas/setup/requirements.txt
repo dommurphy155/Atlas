@@ -1,5 +1,6 @@
 # Atlas — NVIDIA-only proxy requirements
 httpx
+h2
 python-dotenv
 fastapi
 uvicorn[standard]

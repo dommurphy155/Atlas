@@ -42,16 +42,30 @@ class NvidiaClient:
         read_timeout: float = 60.0,
     ) -> None:
         self.chat_url = self._chat_url(base_url)
+        # Shared connection-pool limits. A warm pool with long keepalive expiry
+        # means repeated requests reuse the TLS session instead of paying the
+        # handshake every time — the main "feels slow" fix. HTTP/2 multiplexes
+        # concurrent requests over one connection and compresses headers; NVIDIA
+        # supports it, so we negotiate it.
+        limits = httpx.Limits(
+            max_connections=100,
+            max_keepalive_connections=20,
+            keepalive_expiry=30.0,
+        )
         # Non-stream: flat total timeout, fast-fail, free the key.
         self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=connect_timeout)
+            timeout=httpx.Timeout(timeout, connect=connect_timeout),
+            limits=limits,
+            http2=True,
         )
         # Stream: generous read as a dead-stream backstop, no total cap.
         # The keepalive wrapper in the proxy keeps the downstream client alive
         # during reasoning-model thinking gaps; the read timeout only fires
         # when the upstream is genuinely silent past this window.
         self._stream_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(None, connect=connect_timeout, read=read_timeout)
+            timeout=httpx.Timeout(None, connect=connect_timeout, read=read_timeout),
+            limits=limits,
+            http2=True,
         )
 
     @staticmethod
@@ -62,6 +76,24 @@ class NvidiaClient:
 
     async def close(self) -> None:
         await asyncio.gather(self._client.aclose(), self._stream_client.aclose())
+
+    async def prewarm(self) -> None:
+        """Warm the TLS/HTTP2 connection pool so the first real request skips
+        the handshake. Best-effort: a failure here (NVIDIA unreachable, 405,
+        auth rejection) is expected and harmless — we just want the TCP+TLS
+        session established, not a successful chat. Runs both clients through
+        a cheap GET in parallel.
+        """
+        async def _try(client: httpx.AsyncClient) -> None:
+            try:
+                # GET, not POST — we don't want to spend tokens or trigger a
+                # real completion. The response status is irrelevant; the TLS
+                # session landing in the pool is the point.
+                await client.get(self.chat_url, headers={"User-Agent": "atlas-prewarm"})
+            except Exception:
+                pass
+
+        await asyncio.gather(_try(self._client), _try(self._stream_client))
 
     async def chat(self, api_key: str, payload: dict[str, Any]) -> NvidiaResponse:
         response = await self._client.post(

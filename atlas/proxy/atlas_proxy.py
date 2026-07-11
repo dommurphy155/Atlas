@@ -115,6 +115,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global watch_task
     await key_store.load(force=True)
     watch_task = asyncio.create_task(key_store.watch())
+    # Warm the NVIDIA connection pool in the background so the first real
+    # request doesn't pay the TLS handshake. Non-blocking: if NVIDIA is slow
+    # the first request just warms it itself.
+    prewarm_task = asyncio.create_task(nvidia_client.prewarm())
     logger.info("atlas started on %s:%s using keys_file=%s model=%s", HOST, PORT, KEYS_FILE, NVIDIA_MODEL)
     try:
         yield
@@ -125,6 +129,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 await watch_task
             except asyncio.CancelledError:
                 pass
+        prewarm_task.cancel()
         await nvidia_client.close()
 
 
@@ -721,6 +726,12 @@ async def keepalive(iterator: AsyncIterator[bytes], interval: float) -> AsyncIte
     """
     keepalive_chunk = b": keepalive\n\n"
     iterator = iterator.__aiter__()
+    # Flush immediately so the client feels the connection the instant it
+    # opens — before NVIDIA has sent a single byte. Reasoning models can sit
+    # silent for 20s+ on prefill; without this the client stares at a dead
+    # socket and assumes the request hung. A leading SSE comment is ignored
+    # by every conformant parser (OpenAI/Anthropic SDKs, curl, EventSource).
+    yield b": ping\n\n"
     pending: asyncio.Task[bytes] | None = None
     while True:
         if pending is None:
@@ -768,6 +779,13 @@ def main() -> None:
         port=args.port,
         log_level="warning",
         access_log=False,
+        # Keep idle client connections alive longer than the SSE keepalive
+        # cadence so a quiet stream doesn't get the client-side socket torn down
+        # mid-thought. Default (5s) churned connections on reasoning models.
+        timeout_keep_alive=75,
+        # Bounded concurrency so a flood of requests can't exhaust memory; the
+        # proxy is I/O-bound waiting on NVIDIA so a sane ceiling is plenty.
+        limit_concurrency=256,
     )
     uvicorn.Server(config).run()
 
