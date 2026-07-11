@@ -1,0 +1,6 @@
+# Atlas — NVIDIA-only proxy requirements
+httpx
+python-dotenv
+fastapi
+uvicorn[standard]
+rich

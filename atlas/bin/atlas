@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# atlas - operator CLI for the Atlas NVIDIA proxy
+# Controls atlas-proxy.service (systemd) on http://127.0.0.1:8788
+set -euo pipefail
+
+ATLAS_PROXY_URL="${ATLAS_PROXY_URL:-http://127.0.0.1:8788}"
+ATLAS_SERVICE="${ATLAS_SERVICE:-atlas-proxy.service}"
+
+# --- color setup (TTY-aware) ---
+if [[ -t 1 ]]; then
+  C_GREEN=$'\033[32m'; C_CYAN=$'\033[36m'; C_YELLOW=$'\033[33m'
+  C_RED=$'\033[31m'; C_BOLD=$'\033[1m'; C_RESET=$'\033[0m'
+else
+  C_GREEN=""; C_CYAN=""; C_YELLOW=""; C_RED=""; C_BOLD=""; C_RESET=""
+fi
+
+err()  { printf '%s%s%s\n' "$C_RED" "$*" "$C_RESET" >&2; }
+info() { printf '%s%s%s\n' "$C_CYAN" "$*" "$C_RESET"; }
+ok()   { printf '%s%s%s\n' "$C_GREEN" "$*" "$C_RESET"; }
+warn() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
+
+usage() {
+  cat <<EOF
+${C_BOLD}atlas${C_RESET} - operator CLI for the Atlas NVIDIA proxy
+
+${C_BOLD}Usage:${C_RESET}
+  atlas <command>
+
+${C_BOLD}Commands:${C_RESET}
+  start     Start the atlas-proxy systemd service
+  stop      Stop the atlas-proxy systemd service
+  restart   Restart the atlas-proxy systemd service
+  status    Show service status + proxy /health and /stats
+  logs      Follow the atlas-proxy journal (Ctrl-C to exit)
+  -h, --help, (none)   Show this help
+
+${C_BOLD}Environment:${C_RESET}
+  ATLAS_PROXY_URL   Proxy base URL (default: http://127.0.0.1:8788)
+  ATLAS_SERVICE      systemd unit name (default: atlas-proxy.service)
+EOF
+}
+
+require_root() {
+  if [[ $EUID -ne 0 ]]; then
+    err "must run as root (try: sudo atlas $1)"
+    return 1
+  fi
+}
+
+require_systemctl() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    err "systemctl not found - systemd not available on this host"
+    return 1
+  fi
+}
+
+do_service() {
+  local action="$1"
+  require_systemctl || return 1
+  require_root "$action" || return 1
+  info "atlas: $action $ATLAS_SERVICE"
+  if systemctl "$action" "$ATLAS_SERVICE"; then
+    ok "atlas: $action done"
+  else
+    err "atlas: $action failed"
+    return 1
+  fi
+}
+
+# pretty-print JSON via python3 if available, else raw
+pprint_json() {
+  local body="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$body" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$body"
+  else
+    printf '%s\n' "$body"
+  fi
+}
+
+# curl an endpoint, print a section header + pretty body; silent on connection failure
+probe() {
+  local label="$1" path="$2"
+  printf '\n%s--- %s %s%s\n' "$C_BOLD" "$label" "$ATLAS_PROXY_URL$path" "$C_RESET"
+  local body
+  if body=$(curl -sS --max-time 3 -m 3 "${ATLAS_PROXY_URL}${path}" 2>/dev/null); then
+    if [[ -z "$body" ]]; then
+      warn "empty response from $path"
+    else
+      pprint_json "$body"
+    fi
+  else
+    warn "proxy not responding on $path"
+  fi
+}
+
+do_status() {
+  require_systemctl || return 1
+
+  info "atlas: systemctl status $ATLAS_SERVICE"
+  # non-fatal: service may be stopped, systemctl status returns non-zero then
+  systemctl status "$ATLAS_SERVICE" 2>&1 || warn "(service not active or not found)"
+
+  probe "health" "/health"
+  probe "stats"  "/stats"
+  echo
+}
+
+do_logs() {
+  require_systemctl || return 1
+  info "atlas: following journal for $ATLAS_SERVICE (Ctrl-C to exit)"
+  exec journalctl -u "$ATLAS_SERVICE" -f --no-pager
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    start)   do_service start ;;
+    stop)    do_service stop ;;
+    restart) do_service restart ;;
+    status)  do_status ;;
+    logs)    do_logs ;;
+    -h|--help|"") usage ;;
+    *)
+      err "unknown command: $cmd"
+      echo
+      usage
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

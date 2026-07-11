@@ -1,0 +1,44 @@
+# Atlas NVIDIA Proxy — systemd unit
+#
+# Atlas is a standalone NVIDIA-only proxy service. It runs on port 8788 and is
+# completely separate from any other proxy project. This unit launches the
+# FastAPI/uvicorn app via the Atlas virtualenv.
+#
+# Service name: atlas-proxy.service
+# Port: 8788 (ATLAS_PROXY_PORT)
+# Model: moonshotai/kimi-k2.6 via NVIDIA integrate API
+
+[Unit]
+Description=Atlas NVIDIA Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/claude/atlas
+
+# Inline environment (no EnvironmentFile). ATLAS_ prefix only.
+Environment=HOME=/root
+Environment=PATH=/root/claude/atlas/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=ATLAS_PROXY_HOST=127.0.0.1
+Environment=ATLAS_PROXY_PORT=8788
+Environment=ATLAS_KEYS_FILE=/root/claude/atlas/data/keys.txt
+Environment=ATLAS_NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
+Environment=ATLAS_NVIDIA_MODEL=z-ai/glm-5.2
+Environment=ATLAS_PROXY_RELOAD_SECONDS=5
+Environment=ATLAS_PROXY_MAX_KEY_FAILOVERS=3
+Environment=ATLAS_PROXY_REQUEST_TIMEOUT=300
+Environment=ATLAS_PROXY_MAX_RETRIES=2
+Environment=ATLAS_PROXY_DEBUG=0
+
+# Launch the proxy app module from the venv python.
+ExecStart=/root/claude/atlas/.venv/bin/python -m proxy.atlas_proxy
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

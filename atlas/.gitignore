@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/keys.txt
+data/proxy_stats.json
+.remember/
+.plugin-config/
+.pair-programming-session.md
+.session-summary.md
+.pytest_cache/
