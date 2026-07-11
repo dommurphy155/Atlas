@@ -48,6 +48,8 @@ NVIDIA_MODEL = os.getenv("ATLAS_NVIDIA_MODEL", "z-ai/glm-5.2")
 NVIDIA_BASE_URL = os.getenv("ATLAS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
 RELOAD_SECONDS = int(os.getenv("ATLAS_PROXY_RELOAD_SECONDS", "5"))
 REQUEST_TIMEOUT = float(os.getenv("ATLAS_PROXY_REQUEST_TIMEOUT", "300"))
+CONNECT_TIMEOUT = float(os.getenv("ATLAS_PROXY_CONNECT_TIMEOUT", "10"))
+READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "60"))
 MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
 MAX_KEY_FAILOVERS = int(os.getenv("ATLAS_PROXY_MAX_KEY_FAILOVERS", "3"))
 DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
@@ -93,7 +95,7 @@ for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpx._cli
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 
 key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS)
-nvidia_client = NvidiaClient(NVIDIA_BASE_URL, REQUEST_TIMEOUT)
+nvidia_client = NvidiaClient(NVIDIA_BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
 watch_task: asyncio.Task[None] | None = None
 active_requests = 0
 

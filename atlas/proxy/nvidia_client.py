@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -17,9 +18,26 @@ class NvidiaResponse:
 
 
 class NvidiaClient:
-    def __init__(self, base_url: str, timeout: float) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout: float,
+        connect_timeout: float = 10.0,
+        read_timeout: float = 60.0,
+    ) -> None:
         self.chat_url = self._chat_url(base_url)
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout))
+        # Split timeouts: a flat `timeout` applies to every read, so a stalled
+        # upstream (200 headers then silence, or a long mid-stream gap) holds a
+        # key for the full window. connect fails fast; read bounds the idle gap
+        # between chunks so a dead stream frees the key in ~read_timeout, not
+        # ~timeout. `timeout` still caps write/pool as a backstop.
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                timeout,
+                connect=connect_timeout,
+                read=read_timeout,
+            )
+        )
 
     @staticmethod
     def is_valid_key(api_key: str | None) -> bool:
@@ -52,6 +70,20 @@ class NvidiaClient:
                 async for chunk in response.aiter_bytes():
                     if chunk:
                         yield chunk
+            except httpx.TimeoutException:
+                # Mid-stream read timeout (idle gap exceeded). Emit a terminal
+                # OpenAI-shaped SSE error + [DONE] so the downstream adapter
+                # and the client both see a clean end-of-stream instead of a
+                # truncated connection with no final event.
+                err = {
+                    "error": {
+                        "message": "upstream stream timed out (idle read)",
+                        "type": "upstream_timeout",
+                        "code": 504,
+                    }
+                }
+                yield f"data: {json.dumps(err)}\n\n".encode()
+                yield b"data: [DONE]\n\n"
             finally:
                 await response.aclose()
 

@@ -495,6 +495,28 @@ async def openai_sse_to_anthropic_sse(
             except (json.JSONDecodeError, ValueError):
                 continue
 
+            # Upstream emitted a terminal error chunk (e.g. mid-stream read
+            # timeout from NvidiaClient). Surface it as a text block so the
+            # client sees the failure instead of an empty message.
+            if isinstance(chunk, dict) and isinstance(chunk.get("error"), dict):
+                start_evt = _ensure_started()
+                if start_evt is not None:
+                    yield start_evt
+                if not text_block_open:
+                    text_block_open = True
+                    next_block_index = 1
+                    yield _sse_event(
+                        "content_block_start",
+                        {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+                    )
+                err = chunk["error"]
+                err_text = str(err.get("message") or "upstream stream error")
+                yield _sse_event(
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": f"[stream error] {err_text}"}},
+                )
+                continue
+
             # Adopt the upstream message id once we see it.
             if not started and isinstance(chunk.get("id"), str):
                 message_id = chunk["id"]
