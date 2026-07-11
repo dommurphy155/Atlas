@@ -49,7 +49,17 @@ NVIDIA_BASE_URL = os.getenv("ATLAS_NVIDIA_BASE_URL", "https://integrate.api.nvid
 RELOAD_SECONDS = int(os.getenv("ATLAS_PROXY_RELOAD_SECONDS", "5"))
 REQUEST_TIMEOUT = float(os.getenv("ATLAS_PROXY_REQUEST_TIMEOUT", "300"))
 CONNECT_TIMEOUT = float(os.getenv("ATLAS_PROXY_CONNECT_TIMEOUT", "10"))
-READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "60"))
+# Stream read deadline — the dead-stream backstop, NOT the thinking-gap limit.
+# Reasoning models sit silent for long stretches; 60s killed healthy streams.
+# 180s gives a genuinely dead upstream time to be detected without murdering
+# a model that's just thinking. The keepalive wrapper keeps the downstream
+# client alive well before this fires.
+READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "180"))
+# SSE keepalive cadence (seconds). While the upstream is silent, the proxy
+# emits ': keepalive\n\n' comment lines so downstream clients and any
+# middleboxes (nginx proxy_read_timeout, corporate proxies) reset their idle
+# timers instead of killing a healthy-but-quiet stream.
+KEEPALIVE_SECONDS = float(os.getenv("ATLAS_PROXY_KEEPALIVE_SECONDS", "15"))
 MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
 MAX_KEY_FAILOVERS = int(os.getenv("ATLAS_PROXY_MAX_KEY_FAILOVERS", "3"))
 DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
@@ -468,8 +478,17 @@ async def handle_stream(
             record_failure("nvidia")
             return stream_error(model, "no usable NVIDIA keys are available", 503)
 
+        def _on_timeout() -> None:
+            # Mid-stream timeout: cool the key and record the failure. Without
+            # this, a key that returns 200-then-hang recycles with no cooldown
+            # and the death is counted as a success in /stats.
+            asyncio.create_task(key_store.cooldown_key(api_key))
+            record_failure("nvidia")
+
         try:
-            status, _, iterator = await nvidia_client.stream_chat(api_key, payload)
+            status, _, iterator = await nvidia_client.stream_chat(
+                api_key, payload, rid=rid, on_timeout=_on_timeout
+            )
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
@@ -482,7 +501,12 @@ async def handle_stream(
 
         if status < 400:
             return StreamingResponse(
-                stream_with_active_count(stream_router_sse(iterator, model, rid, "nvidia", started)),
+                stream_with_active_count(
+                    keepalive(
+                        stream_router_sse(iterator, model, rid, "nvidia", started),
+                        KEEPALIVE_SECONDS,
+                    )
+                ),
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
@@ -561,8 +585,14 @@ async def handle_anthropic_stream(
             record_failure("nvidia")
             return _anthropic_stream_error(requested_model, "no usable NVIDIA keys are available", 503)
 
+        def _on_timeout() -> None:
+            asyncio.create_task(key_store.cooldown_key(api_key))
+            record_failure("nvidia")
+
         try:
-            status, _, iterator = await nvidia_client.stream_chat(api_key, payload)
+            status, _, iterator = await nvidia_client.stream_chat(
+                api_key, payload, rid=rid, on_timeout=_on_timeout
+            )
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
@@ -576,7 +606,10 @@ async def handle_anthropic_stream(
         if status < 400:
             return StreamingResponse(
                 stream_with_active_count(
-                    openai_sse_to_anthropic_sse(iterator, requested_model, on_done=_on_done)
+                    keepalive(
+                        openai_sse_to_anthropic_sse(iterator, requested_model, on_done=_on_done),
+                        KEEPALIVE_SECONDS,
+                    )
                 ),
                 status_code=200,
                 media_type="text/event-stream",
@@ -667,6 +700,45 @@ async def stream_with_active_count(iterator: AsyncIterator[bytes]) -> AsyncItera
             yield chunk
     finally:
         active_requests -= 1
+
+
+async def keepalive(iterator: AsyncIterator[bytes], interval: float) -> AsyncIterator[bytes]:
+    """Emit SSE keepalive comments during upstream idle periods.
+
+    Reasoning models sit silent for long stretches (prefill, thinking). A bare
+    idle gap can trip downstream client timeouts and middlebox idle timers
+    (nginx ``proxy_read_timeout``, corporate proxies) even when the upstream
+    stream is healthy. While NVIDIA is quiet, emit ``: keepalive\\n\\n`` — an
+    SSE comment line that conformant clients ignore but that resets every idle
+    timer between us and the client.
+
+    Interleaves keepalives with upstream bytes with no buffering, so real
+    tokens still stream the instant they arrive. The in-flight upstream read
+    is shielded so the keepalive timeout races *against* it without cancelling
+    it — cancelling ``__anext__`` would abort the generator's current await
+    and drop the chunk it was about to yield. The upstream's own read deadline
+    (NvidiaClient stream client) remains the dead-stream backstop.
+    """
+    keepalive_chunk = b": keepalive\n\n"
+    iterator = iterator.__aiter__()
+    pending: asyncio.Task[bytes] | None = None
+    while True:
+        if pending is None:
+            pending = asyncio.ensure_future(iterator.__anext__())
+        done, _ = await asyncio.wait(
+            {pending}, timeout=interval, return_when=asyncio.FIRST_COMPLETED
+        )
+        if not done:
+            # Interval elapsed with no upstream byte — emit a keepalive and
+            # keep waiting on the same in-flight read.
+            yield keepalive_chunk
+            continue
+        try:
+            chunk = pending.result()
+        except StopAsyncIteration:
+            return
+        pending = None
+        yield chunk
 
 
 def stream_error(model: str, message: str, status: int) -> StreamingResponse:

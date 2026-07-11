@@ -511,9 +511,11 @@ async def openai_sse_to_anthropic_sse(
                     )
                 err = chunk["error"]
                 err_text = str(err.get("message") or "upstream stream error")
+                rid = err.get("rid")
+                tag = f"[stream error rid={rid}] {err_text}" if rid else f"[stream error] {err_text}"
                 yield _sse_event(
                     "content_block_delta",
-                    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": f"[stream error] {err_text}"}},
+                    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": tag}},
                 )
                 continue
 

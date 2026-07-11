@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
+
+logger = logging.getLogger("atlas-proxy")
 
 # Thin wrapper around NVIDIA's chat-completions endpoint.
 @dataclass
@@ -18,6 +22,18 @@ class NvidiaResponse:
 
 
 class NvidiaClient:
+    """NVIDIA chat-completions client with split timeout strategies.
+
+    Non-streaming requests use a flat total ``timeout`` so a hung response
+    fails fast and frees the key. Streaming requests need a different model:
+    reasoning models sit silent for long stretches (prefill, thinking), so a
+    per-read deadline that's too short kills healthy streams, while no cap at
+    all lets a dead upstream hold a key forever. The stream client therefore
+    uses a short ``connect`` and a generous ``read`` (the dead-stream
+    backstop) with no total cap — the proxy bounds the *stream* lifetime via
+    its keepalive wrapper, not httpx.
+    """
+
     def __init__(
         self,
         base_url: str,
@@ -26,17 +42,16 @@ class NvidiaClient:
         read_timeout: float = 60.0,
     ) -> None:
         self.chat_url = self._chat_url(base_url)
-        # Split timeouts: a flat `timeout` applies to every read, so a stalled
-        # upstream (200 headers then silence, or a long mid-stream gap) holds a
-        # key for the full window. connect fails fast; read bounds the idle gap
-        # between chunks so a dead stream frees the key in ~read_timeout, not
-        # ~timeout. `timeout` still caps write/pool as a backstop.
+        # Non-stream: flat total timeout, fast-fail, free the key.
         self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                timeout,
-                connect=connect_timeout,
-                read=read_timeout,
-            )
+            timeout=httpx.Timeout(timeout, connect=connect_timeout)
+        )
+        # Stream: generous read as a dead-stream backstop, no total cap.
+        # The keepalive wrapper in the proxy keeps the downstream client alive
+        # during reasoning-model thinking gaps; the read timeout only fires
+        # when the upstream is genuinely silent past this window.
+        self._stream_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(None, connect=connect_timeout, read=read_timeout)
         )
 
     @staticmethod
@@ -46,7 +61,7 @@ class NvidiaClient:
         return bool(api_key and api_key.startswith("nvapi-"))
 
     async def close(self) -> None:
-        await self._client.aclose()
+        await asyncio.gather(self._client.aclose(), self._stream_client.aclose())
 
     async def chat(self, api_key: str, payload: dict[str, Any]) -> NvidiaResponse:
         response = await self._client.post(
@@ -56,30 +71,53 @@ class NvidiaClient:
         )
         return self._response_from_httpx(response)
 
-    async def stream_chat(self, api_key: str, payload: dict[str, Any]) -> tuple[int, httpx.Headers, AsyncIterator[bytes]]:
-        request = self._client.build_request(
+    async def stream_chat(
+        self,
+        api_key: str,
+        payload: dict[str, Any],
+        rid: str = "",
+        on_timeout: Callable[[], None] | None = None,
+    ) -> tuple[int, httpx.Headers, AsyncIterator[bytes]]:
+        """Open a streaming chat request.
+
+        ``on_timeout`` is invoked once if the upstream goes silent past the
+        read deadline mid-stream — the proxy uses it to cool the key and
+        record a failure, which the iterator's own except cannot do directly
+        without a handle to the key store.
+        """
+        request = self._stream_client.build_request(
             "POST",
             self.chat_url,
             headers=self._headers(api_key),
             json=payload,
         )
-        response = await self._client.send(request, stream=True)
+        response = await self._stream_client.send(request, stream=True)
 
         async def iterator() -> AsyncIterator[bytes]:
             try:
                 async for chunk in response.aiter_bytes():
                     if chunk:
                         yield chunk
-            except httpx.TimeoutException:
-                # Mid-stream read timeout (idle gap exceeded). Emit a terminal
+            except httpx.TimeoutException as exc:
+                # Mid-stream timeout (idle gap exceeded). Emit a terminal
                 # OpenAI-shaped SSE error + [DONE] so the downstream adapter
                 # and the client both see a clean end-of-stream instead of a
-                # truncated connection with no final event.
+                # truncated connection with no final event. Distinguish the
+                # timeout flavour so the message is actually useful for triage,
+                # and thread rid so the client can correlate to a log line.
+                kind = _timeout_kind(exc)
+                if on_timeout is not None:
+                    try:
+                        on_timeout()
+                    except Exception:
+                        logger.warning("on_timeout callback failed for %s", rid)
+                logger.warning("<%s upstream %s (mid-stream)", rid, kind)
                 err = {
                     "error": {
-                        "message": "upstream stream timed out (idle read)",
+                        "message": f"upstream stream timed out ({kind})",
                         "type": "upstream_timeout",
                         "code": 504,
+                        "rid": rid,
                     }
                 }
                 yield f"data: {json.dumps(err)}\n\n".encode()
@@ -116,3 +154,16 @@ class NvidiaClient:
             text=response.text,
             headers=response.headers,
         )
+
+
+def _timeout_kind(exc: httpx.TimeoutException) -> str:
+    """Map an httpx timeout subclass to a short diagnostic label."""
+    if isinstance(exc, httpx.ConnectTimeout):
+        return "connect_timeout"
+    if isinstance(exc, httpx.ReadTimeout):
+        return "idle_read"
+    if isinstance(exc, httpx.PoolTimeout):
+        return "pool_timeout"
+    if isinstance(exc, httpx.WriteTimeout):
+        return "write_timeout"
+    return "timeout"
