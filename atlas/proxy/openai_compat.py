@@ -286,7 +286,7 @@ def anthropic_openai_payload(body: dict[str, Any], upstream_model: str) -> dict[
         "messages": anthropic_messages_to_openai(body),
         "max_tokens": body.get("max_tokens", 1024),
         "temperature": body.get("temperature", 0.7),
-        "stream": False,
+        "stream": bool(body.get("stream", False)),
     }
     tools = anthropic_tools_to_openai(body.get("tools"))
     if tools:
