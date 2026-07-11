@@ -286,6 +286,9 @@ def anthropic_openai_payload(body: dict[str, Any], upstream_model: str) -> dict[
         "messages": anthropic_messages_to_openai(body),
         "max_tokens": body.get("max_tokens", 1024),
         "temperature": body.get("temperature", 0.7),
+        # Honor the caller's stream flag so the upstream request actually
+        # streams when the client asked for streaming. /v1/messages previously
+        # ignored this and always buffered via handle_non_stream.
         "stream": bool(body.get("stream", False)),
     }
     tools = anthropic_tools_to_openai(body.get("tools"))
@@ -381,3 +384,204 @@ async def anthropic_sse_from_response(response: dict[str, Any]) -> AsyncIterator
 async def anthropic_sse(model: str, content: str) -> AsyncIterator[bytes]:
     async for chunk in anthropic_sse_from_response(anthropic_response(model, content)):
         yield chunk
+
+
+def _sse_event(event: str, data: dict[str, Any]) -> bytes:
+    """Encode one Anthropic SSE event as bytes: 'event: <e>\\ndata: <json>\\n\\n'."""
+    return f"event: {event}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n".encode()
+
+
+def _anthropic_stop_reason(finish_reason: str | None) -> str:
+    """Map OpenAI finish_reason to Anthropic stop_reason."""
+    return {
+        "tool_calls": "tool_use",
+        "stop": "end_turn",
+        "length": "max_tokens",
+        "content_filter": "end_turn",
+    }.get(finish_reason or "", "end_turn")
+
+
+async def openai_sse_to_anthropic_sse(
+    iterator: AsyncIterator[bytes],
+    model: str,
+    on_done: Any = None,
+) -> AsyncIterator[bytes]:
+    """Translate an OpenAI/NVIDIA SSE byte stream into Anthropic SSE events.
+
+    Consumes raw bytes from NvidiaClient.stream_chat() and yields Anthropic
+    event bytes as they arrive — message_start, content_block_start/delta/stop,
+    message_delta, message_stop. Real streaming, no buffering of the full body.
+
+    `on_done(prompt_tokens, completion_tokens, total_tokens, tool_calls)` is
+    invoked once with the final usage if the upstream reports it; the caller
+    wires this to stats. Optional.
+    """
+    message_id = f"msg_{uuid.uuid4().hex}"
+    started = False
+    # Content-block bookkeeping. Anthropic blocks are indexed in emission
+    # order: a text block (if any) at index 0, then tool_use blocks after.
+    text_block_open = False
+    # openai tool_call.index -> anthropic block index
+    tool_block_index: dict[int, int] = {}
+    next_block_index = 0  # next anthropic block index to hand out
+    stop_reason = "end_turn"
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    tool_calls_seen = 0
+    buffer = b""
+
+    def _ensure_started() -> bytes | None:
+        nonlocal started
+        if started:
+            return None
+        started = True
+        message = {
+            "id": message_id,
+            "type": "message",
+            "role": "assistant",
+            "model": model,
+            "content": [],
+            "stop_reason": None,
+            "stop_sequence": None,
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+        }
+        return _sse_event("message_start", {"type": "message_start", "message": message})
+
+    def _close_all_blocks() -> list[bytes]:
+        """Emit content_block_stop for every currently-open block."""
+        out: list[bytes] = []
+        # Text block is index 0; tool blocks are the rest, in order.
+        indices = sorted(tool_block_index.values())
+        if text_block_open:
+            indices = [0] + indices
+        for idx in indices:
+            out.append(_sse_event("content_block_stop", {"type": "content_block_stop", "index": idx}))
+        return out
+
+    async def _flush_final() -> AsyncIterator[bytes]:
+        # Close any open blocks, then message_delta + message_stop.
+        for chunk in _close_all_blocks():
+            yield chunk
+        delta = {
+            "type": "message_delta",
+            "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+            "usage": {"output_tokens": output_tokens},
+        }
+        yield _sse_event("message_delta", delta)
+        yield b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+        if on_done is not None:
+            try:
+                on_done(input_tokens, output_tokens, total_tokens, tool_calls_seen)
+            except Exception:
+                pass
+
+    # Walk the byte stream, buffering partial SSE lines.
+    async for raw in iterator:
+        buffer += raw
+        # SSE events are separated by blank lines; process complete lines.
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            if not line.startswith(b"data:"):
+                continue
+            data_str = line[5:].strip()
+            if data_str == b"[DONE]":
+                continue
+            try:
+                chunk = json.loads(data_str)
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+            # Adopt the upstream message id once we see it.
+            if not started and isinstance(chunk.get("id"), str):
+                message_id = chunk["id"]
+
+            choices = chunk.get("choices") if isinstance(chunk, dict) else None
+            choice = choices[0] if isinstance(choices, list) and choices else {}
+            if not isinstance(choice, dict):
+                choice = {}
+            delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
+
+            # ── text delta ──────────────────────────────────────────────
+            content = delta.get("content")
+            if isinstance(content, str) and content:
+                start_evt = _ensure_started()
+                if start_evt is not None:
+                    yield start_evt
+                if not text_block_open:
+                    text_block_open = True
+                    next_block_index = 1  # text is index 0; tools come after
+                    yield _sse_event(
+                        "content_block_start",
+                        {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+                    )
+                yield _sse_event(
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": content}},
+                )
+
+            # ── tool-call delta ─────────────────────────────────────────
+            tool_calls = delta.get("tool_calls")
+            if isinstance(tool_calls, list):
+                start_evt = _ensure_started()
+                if start_evt is not None:
+                    yield start_evt
+                for tc in tool_calls:
+                    if not isinstance(tc, dict):
+                        continue
+                    oai_index = int(tc.get("index") or 0)
+                    if oai_index not in tool_block_index:
+                        tool_block_index[oai_index] = next_block_index
+                        next_block_index += 1
+                        tool_calls_seen += 1
+                        function = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                        yield _sse_event(
+                            "content_block_start",
+                            {
+                                "type": "content_block_start",
+                                "index": tool_block_index[oai_index],
+                                "content_block": {
+                                    "type": "tool_use",
+                                    "id": str(tc.get("id") or f"call_{oai_index}"),
+                                    "name": str(function.get("name") or ""),
+                                    "input": {},
+                                },
+                            },
+                        )
+                    function = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                    args_fragment = function.get("arguments")
+                    if args_fragment:
+                        yield _sse_event(
+                            "content_block_delta",
+                            {
+                                "type": "content_block_delta",
+                                "index": tool_block_index[oai_index],
+                                "delta": {"type": "input_json_delta", "partial_json": str(args_fragment)},
+                            },
+                        )
+
+            # ── finish_reason ───────────────────────────────────────────
+            finish_reason = choice.get("finish_reason")
+            if finish_reason:
+                stop_reason = _anthropic_stop_reason(finish_reason)
+
+            # ── usage (often on the final chunk) ────────────────────────
+            usage = chunk.get("usage") if isinstance(chunk, dict) else None
+            if isinstance(usage, dict):
+                input_tokens = int(usage.get("prompt_tokens") or 0)
+                output_tokens = int(usage.get("completion_tokens") or 0)
+                total_tokens = int(usage.get("total_tokens") or 0)
+
+    # Stream ended. If we never started (empty upstream), still emit a minimal
+    # valid Anthropic stream so the client gets a well-formed empty message.
+    if not started:
+        start_evt = _ensure_started()
+        if start_evt is not None:
+            yield start_evt
+
+    async for chunk in _flush_final():
+        yield chunk
+

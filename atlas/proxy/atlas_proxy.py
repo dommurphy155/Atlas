@@ -28,6 +28,7 @@ from proxy.openai_compat import (
     openai_response_from_router,
     openai_response_to_anthropic,
     openai_error,
+    openai_sse_to_anthropic_sse,
     sse_from_text,
 )
 from proxy.stats import record_failure, record_success, get_status as stats_status
@@ -252,17 +253,19 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
     logger.info(">%s %s stream=%s provider=nvidia", rid, _short_model(model), "yes" if stream else "no")
 
     if stream:
+        # Increment here; the matching decrement happens in
+        # stream_with_active_count when the stream body finishes. Don't
+        # decrement on return — the body hasn't been consumed yet.
         active_requests += 1
         try:
             response = await handle_stream(model, upstream_payload, rid, started)
             return response
         except Exception:
+            active_requests -= 1
             elapsed = time.monotonic() - started
             logger.info("<%s status=500 provider=nvidia %.1fs", rid, elapsed)
             record_failure("nvidia")
             raise
-        finally:
-            active_requests -= 1
 
     active_requests += 1
     try:
@@ -295,6 +298,22 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
 
     rid = _generate_rid()
     started = time.monotonic()
+
+    # Streaming: route through the real-time OpenAI→Anthropic SSE adapter
+    # instead of buffering the whole response and faking the event stream.
+    # Increment here; stream_with_active_count decrements when the body
+    # finishes. handle_anthropic_stream always returns a StreamingResponse
+    # (success and error paths are both wrapped in stream_with_active_count),
+    # so the single decrement in the wrapper is the matching one.
+    if body.get("stream"):
+        active_requests += 1
+        response = await handle_anthropic_stream(requested_model, payload, rid, started)
+        elapsed = time.monotonic() - started
+        if isinstance(response, StreamingResponse):
+            logger.info("<%s status=200 stream=yes provider=nvidia model=%s %.1fs", rid, _short_model(NVIDIA_MODEL), elapsed)
+        else:
+            logger.info("<%s status=%d stream=yes-failed provider=nvidia %.1fs", rid, getattr(response, "status_code", 0), elapsed)
+        return response
 
     active_requests += 1
     try:
@@ -484,6 +503,102 @@ async def handle_stream(
 
     record_failure("nvidia")
     return stream_error(model, "no usable NVIDIA keys are available", 503)
+
+
+# ── Handler: Anthropic streaming ───────────────────────────────────────
+
+
+def _anthropic_stream_error(model: str, message: str, status: int) -> StreamingResponse:
+    """Emit an Anthropic-shaped SSE error stream (for /v1/messages stream failures)."""
+    error_response = anthropic_response_from_blocks(
+        model,
+        [{"type": "text", "text": f"Atlas proxy error ({status}): {message}"}],
+        "error",
+    )
+
+    async def iterator() -> AsyncIterator[bytes]:
+        async for chunk in anthropic_sse_from_response(error_response):
+            yield chunk
+
+    return StreamingResponse(
+        stream_with_active_count(iterator()),
+        status_code=200 if status < 500 else status,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def handle_anthropic_stream(
+    requested_model: str,
+    payload: dict[str, Any],
+    rid: str = "",
+    started: float = 0.0,
+) -> StreamingResponse:
+    """Stream /v1/messages by translating NVIDIA's OpenAI SSE into Anthropic SSE.
+
+    Same key-failover/retry loop as handle_stream(), but the upstream iterator
+    is wrapped in openai_sse_to_anthropic_sse() and errors are Anthropic-shaped.
+    """
+    key_failovers = 0
+    server_retries = 0
+
+    def _on_done(pt: int, ct: int, tt: int, tc: int) -> None:
+        record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
+        elapsed = time.monotonic() - started if started else 0
+        logger.info(
+            "<%s status=200 provider=nvidia model=%s tools=%d in_tokens=%d out_tokens=%d Total=%d %.1fs",
+            rid, _short_model(NVIDIA_MODEL), tc, pt, ct, tt, elapsed,
+        )
+
+    for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
+        if key_failovers >= MAX_KEY_FAILOVERS:
+            record_failure("nvidia")
+            return _anthropic_stream_error(requested_model, "Atlas exhausted the per-request key failover limit. Retry request.", 503)
+        api_key = await key_store.acquire()
+        if not api_key:
+            record_failure("nvidia")
+            return _anthropic_stream_error(requested_model, "no usable NVIDIA keys are available", 503)
+
+        try:
+            status, _, iterator = await nvidia_client.stream_chat(api_key, payload)
+        except httpx.TimeoutException:
+            await key_store.cooldown_key(api_key)
+            record_failure("nvidia")
+            return _anthropic_stream_error(requested_model, "upstream request timed out", 504)
+        except httpx.HTTPError as exc:
+            await key_store.cooldown_key(api_key)
+            logger.warning("anthropic stream request failed: %s", exc.__class__.__name__)
+            key_failovers += 1
+            continue
+
+        if status < 400:
+            return StreamingResponse(
+                stream_with_active_count(
+                    openai_sse_to_anthropic_sse(iterator, requested_model, on_done=_on_done)
+                ),
+                status_code=200,
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
+        if status in {402, 429, 401, 403}:
+            await key_store.cooldown_key(api_key)
+            logger.warning("nvidia key cooled after anthropic stream %d", status)
+            key_failovers += 1
+            continue
+
+        if status in {500, 502, 503, 504}:
+            if server_retries >= MAX_RETRIES:
+                record_failure("nvidia")
+                return _anthropic_stream_error(requested_model, f"upstream returned {status}", status)
+            server_retries += 1
+            continue
+
+        record_failure("nvidia")
+        return _anthropic_stream_error(requested_model, f"upstream returned {status}", status)
+
+    record_failure("nvidia")
+    return _anthropic_stream_error(requested_model, "no usable NVIDIA keys are available", 503)
 
 
 # ── SSE helpers ───────────────────────────────────────────────────────
