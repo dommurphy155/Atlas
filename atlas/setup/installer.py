@@ -319,38 +319,71 @@ def install_cli() -> None:
 
 
 def wire_claude_env() -> None:
-    """Optionally append ANTHROPIC_* exports to ~/.bashrc or ~/.zshrc.
+    """Mandatory: write ANTHROPIC_* exports into the shell rc, strip any stale
+    ANTHROPIC_AUTH_TOKEN, and apply the exports to THIS process so the
+    immediately-launched claude inherits them — no manual source needed.
 
-    Only appends if the relevant rc file exists and the export lines are not
-    already present. Uses port 8788 (the Atlas port).
+    Writes to ~/.bashrc and ~/.zshrc (whichever exist). If neither exists,
+    creates ~/.bashrc so the block always lands somewhere.
     """
-    console.print(Panel.fit("[bold cyan]Wiring shell env (optional)[/]", border_style="cyan"))
+    console.print(Panel.fit("[bold cyan]Wiring shell env[/]", border_style="cyan"))
+
+    base_url = "http://127.0.0.1:8788"
+    api_key = "atlas"
 
     candidates = [Path.home() / ".bashrc", Path.home() / ".zshrc"]
     rc_files = [p for p in candidates if p.exists()]
-
     if not rc_files:
-        console.print("[yellow]No ~/.bashrc or ~/.zshrc found — skipping shell env wiring.[/yellow]")
-        return
+        # No rc file at all — create .bashrc so the exports have a home.
+        bashrc = Path.home() / ".bashrc"
+        bashrc.touch()
+        rc_files = [bashrc]
+        console.print(f"[yellow]No rc file found — created:[/yellow] {bashrc}")
 
+    # The Atlas block we ensure is present in every rc file.
+    marker = "ANTHROPIC_BASE_URL=http://127.0.0.1:8788"
     block = (
         "\n# --- Atlas NVIDIA proxy (port 8788) ---\n"
-        "export ANTHROPIC_BASE_URL=http://127.0.0.1:8788\n"
-        "export ANTHROPIC_API_KEY=atlas\n"
+        f"export ANTHROPIC_BASE_URL={base_url}\n"
+        f"export ANTHROPIC_API_KEY={api_key}\n"
+        "unset ANTHROPIC_AUTH_TOKEN\n"
         "# --- end Atlas ---\n"
     )
 
     for rc in rc_files:
         content = rc.read_text()
-        if "ANTHROPIC_BASE_URL=http://127.0.0.1:8788" in content:
+
+        # Strip any stale ANTHROPIC_AUTH_TOKEN line(s) so only base_url + api_key
+        # remain authoritative. Claude Code honors ANTHROPIC_AUTH_TOKEN if set,
+        # which would bypass the proxy — so we drop it.
+        new_lines = []
+        changed = False
+        for line in content.splitlines():
+            if line.strip().startswith("export ANTHROPIC_AUTH_TOKEN="):
+                changed = True
+                continue  # drop it
+            new_lines.append(line)
+        stripped = "\n".join(new_lines)
+        if changed:
+            console.print(f"[yellow]Removed stale ANTHROPIC_AUTH_TOKEN from:[/yellow] {rc}")
+
+        # Append the Atlas block if not already wired.
+        if marker not in stripped:
+            if stripped and not stripped.endswith("\n"):
+                stripped += "\n"
+            stripped += block
+            console.print(f"[green]Appended Atlas env exports to:[/green] {rc}")
+        else:
             console.print(f"[yellow]Already wired in:[/yellow] {rc}")
-            continue
+        rc.write_text(stripped)
 
-        with rc.open("a") as fh:
-            fh.write(block)
-        console.print(f"[green]Appended Atlas env exports to:[/green] {rc}")
-
-    console.print("[dim]Restart your shell (or source the rc file) for the exports to take effect.[/dim]")
+    # Apply to THIS process immediately so the claude we exec next inherits the
+    # exports without the user needing to source their rc manually.
+    os.environ["ANTHROPIC_BASE_URL"] = base_url
+    os.environ["ANTHROPIC_API_KEY"] = api_key
+    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+    console.print("[green]Exports applied to this process.[/green]")
+    console.print("[dim]Future shells pick them up automatically from the rc file.[/dim]")
 
 
 def ensure_claude() -> str | None:
@@ -423,21 +456,34 @@ def health_check() -> dict | None:
         return None
     console.print(f"[green]Proxy healthy at {PROXY_URL}/health[/green]")
 
-    # Fetch /stats for key count.
+    # Poll /stats until the key pool is non-empty. The proxy force-loads keys in
+    # its lifespan startup, but the service may still be booting when we first
+    # hit it; and even after load, the round-robin store reports total_keys
+    # from its in-memory list which is populated on the first /stats call.
+    # Wait up to ~20s for keys to actually appear before declaring failure.
     stats = None
-    try:
-        with urllib.request.urlopen(f"{PROXY_URL}/stats", timeout=3) as r:
-            stats = json.loads(r.read().decode())
-    except Exception as e:
-        console.print(f"[red]Could not read /stats: {e}[/red]")
+    total_keys = 0
+    for attempt in range(40):
+        try:
+            with urllib.request.urlopen(f"{PROXY_URL}/stats", timeout=3) as r:
+                stats = json.loads(r.read().decode())
+            total_keys = stats.get("total_keys", 0)
+            if total_keys >= 1:
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    if stats is None:
+        console.print(f"[red]Could not read /stats after waiting.[/red]")
         _print_service_status()
         return None
 
-    total_keys = stats.get("total_keys", 0)
     if total_keys < 1:
         console.print(
-            f"[red]Proxy is up but reports total_keys={total_keys}.[/red] "
-            "Keys may still be loading (hot-reload is 5s) — check `atlas status` shortly.")
+            f"[red]Proxy is up but reports total_keys={total_keys} after waiting.[/red] "
+            "Keys were written to data/keys.txt but the proxy hasn't loaded them. "
+            "Check `atlas logs` and `atlas restart`.")
     else:
         console.print(f"[green]Proxy serving with {total_keys} key(s).[/green]")
     return stats

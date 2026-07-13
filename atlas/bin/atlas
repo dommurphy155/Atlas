@@ -139,24 +139,24 @@ do_tokens() {
 }
 
 main() {
-  local cmd="${1:-}"
-  case "$cmd" in
-    start)   do_service start ;;
-    stop)    do_service stop ;;
-    restart) do_service restart ;;
-    status)  do_status ;;
-    logs)
-        do_logs "$@"
-        ;;
-    tokens)  do_tokens ;;
-    -h|--help|"") usage ;;
-    *)
-      err "unknown command: $cmd"
-      echo
-      usage
-      exit 2
-      ;;
-  esac
+    local cmd="${1:-}"
+    shift || true
+
+    case "$cmd" in
+        start)   do_service start ;;
+        stop)    do_service stop ;;
+        restart) do_service restart ;;
+        status)  do_status ;;
+        logs)    do_logs "$@" ;;
+        tokens)  do_tokens ;;
+        -h|--help|"") usage ;;
+        *)
+            err "unknown command: $cmd"
+            echo
+            usage
+            exit 2
+            ;;
+    esac
 }
 
 main "$@"
