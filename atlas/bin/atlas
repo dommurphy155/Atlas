@@ -124,13 +124,14 @@ do_logs() {
 
 do_tokens() {
   # Resolve the atlas project dir from the CLI symlink so this works regardless
-  # of cwd. Falls back to a default if the symlink isn't resolvable.
+  # of cwd. The symlink at /usr/local/bin/atlas -> .../atlas/bin/atlas resolves
+  # to the real script, and two dirname's climb to the project root. No hardcoded
+  # fallback — if the venv isn't there, say so instead of guessing a wrong path.
   local cli_self proj_dir
   cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
   proj_dir="$(dirname "$(dirname "$cli_self")")"
-  if [[ ! -d "$proj_dir/.venv" ]]; then proj_dir="/root/claude/atlas"; fi
   if [[ ! -x "$proj_dir/.venv/bin/python" ]]; then
-    err "atlas venv not found at $proj_dir/.venv"
+    err "atlas venv not found at $proj_dir/.venv (re-run setup/install.sh)"
     return 1
   fi
   # Run from the project dir so `proxy.token_tracker` resolves on sys.path.
@@ -145,8 +146,7 @@ main() {
     restart) do_service restart ;;
     status)  do_status ;;
     logs)
-        do_logs 
-        "$@"
+        do_logs "$@"
         ;;
     tokens)  do_tokens ;;
     -h|--help|"") usage ;;
