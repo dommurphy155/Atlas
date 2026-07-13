@@ -72,8 +72,12 @@ class NvidiaKeyStore:
     def _cooling_until(self, key: str) -> float:
         return self._cooldowns.get(key, 0.0)
 
-    async def acquire(self) -> str | None:
-        """Round-robin acquire, skipping keys that are on cooldown."""
+    async def acquire(self) -> tuple[str, int] | None:
+        """Round-robin acquire, skipping keys that are on cooldown.
+
+        Returns ``(key, index)`` so callers can log a stable key identity
+        (position in keys.txt + a fingerprint) without re-scanning the pool.
+        """
         async with self._lock:
             if not self._keys:
                 return None
@@ -85,12 +89,13 @@ class NvidiaKeyStore:
                 if self._cooling_until(key) > now:
                     continue
                 self._next_index = (idx + 1) % n
-                return key
+                return key, idx
             # Every key is on cooldown — fall back to the next one anyway so the
             # request does not hard-fail when the pool is merely rate-limited.
             key = self._keys[self._next_index]
+            idx = self._next_index
             self._next_index = (self._next_index + 1) % n
-            return key
+            return key, idx
 
     async def cooldown_key(self, key: str) -> None:
         async with self._lock:
@@ -104,3 +109,16 @@ class NvidiaKeyStore:
             "available": len(self._keys) > 0,
             "cooling_down": cooling,
         }
+
+
+def fingerprint(key: str, index: int | None = None) -> str:
+    """Short, leak-safe key identity for logs: ``#idx(…last4)``.
+
+    Index is the key's position in keys.txt (quick mental tracking); the
+    last-4 fingerprint gives a stable identity that survives a keys.txt
+    reorder. The full key is never logged.
+    """
+    tail = key[-4:] if len(key) >= 4 else key
+    if index is not None:
+        return f"#{index}(…{tail})"
+    return f"…{tail}"

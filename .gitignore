@@ -1,19 +1,49 @@
-# secrets — never commit
-.env
-data/keys.txt
-data/proxy_stats.json
-data/proxy_stats.tmp
+# ── Secrets — never commit ─────────────────────────────────────────────
+# NVIDIA nvapi- keys, env, persisted stats. Anchor under atlas/ (the only
+# place these live) so the patterns match the real paths.
+atlas/.env
+atlas/data/keys.txt
+atlas/data/proxy_stats.json
+atlas/data/proxy_stats.tmp
+**/.env
+**/keys.txt
+**/proxy_stats.json
+**/proxy_stats.tmp
 
-# python
+# ── Python ─────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
 .venv/
 venv/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
 
-# editor
+# ── Tooling / session artifacts ─────────────────────────────────────────
+.remember/
+**/.remember/
+.plugin-config/
+**/.plugin-config/
+.pair-programming-session.md
+.session-summary.md
+
+# ── Logs ───────────────────────────────────────────────────────────────
+*.log
+*.log.*
+logs/
+
+# ── OS junk ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ──────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
+*~

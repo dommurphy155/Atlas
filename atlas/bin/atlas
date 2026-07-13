@@ -32,6 +32,11 @@ ${C_BOLD}Commands:${C_RESET}
   restart   Restart the atlas-proxy systemd service
   status    Show service status + proxy /health and /stats
   logs      Follow the atlas-proxy journal (Ctrl-C to exit)
+            Pass extra journalctl flags for a one-shot query:
+              atlas logs -n 100            last 100 lines
+              atlas logs --since '10 min ago'
+              atlas logs -o json | jq .    structured (with ATLAS_PROXY_LOG_FORMAT=json)
+  tokens    Clean token/usage summary since last restart
   -h, --help, (none)   Show this help
 
 ${C_BOLD}Environment:${C_RESET}
@@ -107,8 +112,29 @@ do_status() {
 
 do_logs() {
   require_systemctl || return 1
+  # If extra args are passed, forward them to journalctl instead of tailing.
+  # e.g. `atlas logs -n 100`, `atlas logs --since "10 min ago"`, `atlas logs -o json`.
+  if [[ $# -gt 0 ]]; then
+    info "atlas: journalctl $ATLAS_SERVICE $*"
+    exec journalctl -u "$ATLAS_SERVICE" --no-pager "$@"
+  fi
   info "atlas: following journal for $ATLAS_SERVICE (Ctrl-C to exit)"
   exec journalctl -u "$ATLAS_SERVICE" -f --no-pager
+}
+
+do_tokens() {
+  # Resolve the atlas project dir from the CLI symlink so this works regardless
+  # of cwd. Falls back to a default if the symlink isn't resolvable.
+  local cli_self proj_dir
+  cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
+  proj_dir="$(dirname "$(dirname "$cli_self")")"
+  if [[ ! -d "$proj_dir/.venv" ]]; then proj_dir="/root/claude/atlas"; fi
+  if [[ ! -x "$proj_dir/.venv/bin/python" ]]; then
+    err "atlas venv not found at $proj_dir/.venv"
+    return 1
+  fi
+  # Run from the project dir so `proxy.token_tracker` resolves on sys.path.
+  (cd "$proj_dir" && ./.venv/bin/python -m proxy.token_tracker)
 }
 
 main() {
@@ -118,7 +144,11 @@ main() {
     stop)    do_service stop ;;
     restart) do_service restart ;;
     status)  do_status ;;
-    logs)    do_logs ;;
+    logs)
+        do_logs 
+        "$@"
+        ;;
+    tokens)  do_tokens ;;
     -h|--help|"") usage ;;
     *)
       err "unknown command: $cmd"

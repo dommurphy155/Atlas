@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from proxy.nvidia_key_store import NvidiaKeyStore
+from proxy.nvidia_key_store import NvidiaKeyStore, fingerprint as key_fingerprint
 from proxy.nvidia_client import NvidiaClient
 from proxy.openai_compat import (
     anthropic_openai_payload,
@@ -31,7 +31,7 @@ from proxy.openai_compat import (
     openai_sse_to_anthropic_sse,
     sse_from_text,
 )
-from proxy.stats import record_failure, record_success, get_status as stats_status
+from proxy.stats import record_failure, record_success, get_status as stats_status, reset_since_restart
 from proxy.system_prompt import replace_system_prompt
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -63,6 +63,9 @@ KEEPALIVE_SECONDS = float(os.getenv("ATLAS_PROXY_KEEPALIVE_SECONDS", "15"))
 MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
 MAX_KEY_FAILOVERS = int(os.getenv("ATLAS_PROXY_MAX_KEY_FAILOVERS", "3"))
 DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
+# Log output shape. "pretty" (default) = the colored one-liner. "json" = one
+# JSON object per record, for piping to jq or shipping to an aggregator.
+LOG_FORMAT = os.getenv("ATLAS_PROXY_LOG_FORMAT", "pretty").lower()
 
 
 class _CleanFormatter(logging.Formatter):
@@ -76,14 +79,44 @@ class _CleanFormatter(logging.Formatter):
     _RESET = "\033[0m"
 
     def format(self, record: logging.LogRecord) -> str:
-        ts = self.formatTime(record, "%d/%-m/%y %-H:%M")
+        ts = self.formatTime(record, "%H:%M:%S")
+        # Color the timestamp by severity so WARN/ERROR still stand out without
+        # burning a column on the level label.
         color = self._COLORS.get(record.levelname, "")
-        level = f"{color}{record.levelname:<7}{self._RESET}"
-        return f"{ts} {level} atlas   {record.getMessage()}"
+        ts = f"{color}{ts}{self._RESET}" if color else ts
+        return f"{ts} {record.getMessage()}"
+
+
+class _JsonFormatter(logging.Formatter):
+    """One JSON object per log record.
+
+    Extra fields attached to the record via ``logger.info("...", extra={...})``
+    are lifted into the object; the human message becomes ``msg``. ``rid`` is
+    special-cased so it always top-levels for request correlation.
+    """
+
+    _RESERVED = set(vars(logging.LogRecord("", 0, "", 0, "", None, None)).keys())
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "msg": record.getMessage(),
+        }
+        # Lift extra= fields, skipping the logging internals.
+        for key, value in record.__dict__.items():
+            if key in self._RESERVED or key.startswith("_"):
+                continue
+            if key in payload:
+                continue
+            payload[key] = value
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload, separators=(",", ":"))
 
 
 _handler = logging.StreamHandler()
-_handler.setFormatter(_CleanFormatter())
+_handler.setFormatter(_JsonFormatter() if LOG_FORMAT == "json" else _CleanFormatter())
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
     handlers=[_handler],
@@ -114,6 +147,10 @@ active_requests = 0
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global watch_task
     await key_store.load(force=True)
+    # Zero the since-restart stats bucket so "since restart" means what it
+    # says. all_time keeps accumulating across restarts; only the restart
+    # bucket is cleared. Stamps a fresh started_at too.
+    reset_since_restart()
     watch_task = asyncio.create_task(key_store.watch())
     # Warm the NVIDIA connection pool in the background so the first real
     # request doesn't pay the TLS handshake. Non-blocking: if NVIDIA is slow
@@ -143,6 +180,24 @@ def json_error(message: str, code: str, status: int) -> JSONResponse:
 def _generate_rid() -> str:
     """Generate a short request ID for tracing."""
     return uuid.uuid4().hex[:8]
+
+
+def _log_event(
+    level: int,
+    rid: str,
+    event: str,
+    message: str,
+    **fields: Any,
+) -> None:
+    """Emit a structured log line that survives both formatters.
+
+    In pretty mode the human message is shown and the fields are ignored (the
+    message string already carries the important bits). In JSON mode the fields
+    are lifted into the object via ``extra=`` so they're queryable, with ``rid``
+    and ``event`` always top-level for correlation.
+    """
+    extras: dict[str, Any] = {"rid": rid, "event": event, **fields}
+    logger.log(level, message, extra=extras)
 
 
 def _extract_usage(json_data: dict[str, Any]) -> tuple[int, int, int, int]:
@@ -267,7 +322,11 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
 
     rid = _generate_rid()
     started = time.monotonic()
-    logger.info(">%s %s stream=%s provider=nvidia", rid, _short_model(model), "yes" if stream else "no")
+    _log_event(
+        logging.INFO, rid, "request",
+        f">{rid} {_short_model(model)} stream={'yes' if stream else 'no'} provider=nvidia",
+        model=model, stream=stream, provider="nvidia",
+    )
 
     if stream:
         # Increment here; the matching decrement happens in
@@ -315,6 +374,12 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
 
     rid = _generate_rid()
     started = time.monotonic()
+    _log_event(
+        logging.INFO, rid, "request",
+        f">{rid} {requested_model}->{_short_model(NVIDIA_MODEL)} stream={'yes' if body.get('stream') else 'no'} provider=nvidia",
+        model=requested_model, upstream_model=NVIDIA_MODEL,
+        stream=bool(body.get("stream")), provider="nvidia",
+    )
 
     # Streaming: route through the real-time OpenAI→Anthropic SSE adapter
     # instead of buffering the whole response and faking the event stream.
@@ -325,11 +390,8 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
     if body.get("stream"):
         active_requests += 1
         response = await handle_anthropic_stream(requested_model, payload, rid, started)
-        elapsed = time.monotonic() - started
-        if isinstance(response, StreamingResponse):
-            logger.info("<%s status=200 stream=yes provider=nvidia model=%s %.1fs", rid, _short_model(NVIDIA_MODEL), elapsed)
-        else:
-            logger.info("<%s status=%d stream=yes-failed provider=nvidia %.1fs", rid, getattr(response, "status_code", 0), elapsed)
+        # handle_anthropic_stream logs the full response line (with key, tokens,
+        # failovers) via _on_done / _anthropic_stream_error. Don't double-log.
         return response
 
     active_requests += 1
@@ -338,8 +400,8 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
     finally:
         active_requests -= 1
 
-    elapsed = time.monotonic() - started
-    logger.info("<%s status=%d %.1fs", rid, response.status_code, elapsed)
+    # handle_non_stream logs the full response line (key, tokens, failovers).
+    # Don't double-log here.
 
     if response.status_code != 200:
         data = json.loads(response.body.decode("utf-8"))
@@ -397,26 +459,44 @@ async def handle_non_stream(
     for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
         if key_failovers >= MAX_KEY_FAILOVERS:
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "failover_limit",
+                f"<{rid} exhausted key failover limit ({MAX_KEY_FAILOVERS})",
+                failovers=key_failovers,
+            )
             return json_error(
                 "Atlas exhausted the per-request key failover limit. Retry request.",
                 "key_failover_limit",
                 503,
             )
-        api_key = await key_store.acquire()
-        if not api_key:
+        acquired = await key_store.acquire()
+        if not acquired:
             record_failure("nvidia")
             return json_error("no usable NVIDIA keys are available", "no_usable_keys", 503)
+        api_key, key_idx = acquired
+        key_id = key_fingerprint(api_key, key_idx)
 
         try:
             response = await nvidia_client.chat(api_key, payload)
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "timeout",
+                f"<{rid} upstream timeout, cooled key {key_id}",
+                key=key_id, reason="upstream_timeout",
+            )
             return json_error("upstream request timed out", "upstream_timeout", 504)
         except httpx.HTTPError as exc:
             await key_store.cooldown_key(api_key)
             last_status = 502
             last_message = f"upstream request failed: {exc.__class__.__name__}"
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} key {key_id} transport error {exc.__class__.__name__}, failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason=exc.__class__.__name__,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
@@ -424,9 +504,12 @@ async def handle_non_stream(
             pt, ct, tt, tc = _extract_usage(response.json_data)
             record_success("nvidia", model, pt, ct, tt, tc)
             elapsed = time.monotonic() - started if started else 0
-            logger.info(
-                "<%s status=%d provider=nvidia model=%s tools=%d in_tokens=%d out_tokens=%d Total=%d %.1fs",
-                rid, response.status_code, _short_model(model), tc, pt, ct, tt, elapsed,
+            _log_event(
+                logging.INFO, rid, "response",
+                f"<{rid} status={response.status_code} provider=nvidia model={_short_model(model)} key={key_id} tools={tc} in_tokens={pt} out_tokens={ct} Total={tt} failovers={key_failovers} {elapsed:.1f}s",
+                status=response.status_code, model=model, key=key_id,
+                tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
+                failovers=key_failovers, elapsed_ms=round(elapsed * 1000),
             )
             return JSONResponse(openai_response_from_router(model, response.json_data))
 
@@ -437,14 +520,24 @@ async def handle_non_stream(
         if response.status_code in {402, 429}:
             reason = "credits exhausted" if response.status_code == 402 else "quota/billing 429"
             await key_store.cooldown_key(api_key)
-            logger.warning("nvidia key cooled (%s) after %d", reason, response.status_code)
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} key {key_id} cooled ({reason}), failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason=reason, status=response.status_code,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
         # Invalid / forbidden — cool the key and try another.
         if response.status_code in {401, 403}:
             await key_store.cooldown_key(api_key)
-            logger.warning("nvidia key invalid/forbidden after %d", response.status_code)
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} key {key_id} invalid/forbidden ({response.status_code}), failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason="auth", status=response.status_code,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
@@ -452,6 +545,12 @@ async def handle_non_stream(
         if response.status_code in {500, 502, 503, 504}:
             if server_retries >= MAX_RETRIES:
                 break
+            _log_event(
+                logging.WARNING, rid, "retry",
+                f"<{rid} key {key_id} upstream {response.status_code}, retry {server_retries + 1}/{MAX_RETRIES}",
+                key=key_id, status=response.status_code,
+                retry=server_retries + 1,
+            )
             server_retries += 1
             continue
 
@@ -477,11 +576,18 @@ async def handle_stream(
     for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
         if key_failovers >= MAX_KEY_FAILOVERS:
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "failover_limit",
+                f"<{rid} exhausted key failover limit ({MAX_KEY_FAILOVERS})",
+                failovers=key_failovers,
+            )
             return stream_error(model, "Atlas exhausted the per-request key failover limit. Retry request.", 503)
-        api_key = await key_store.acquire()
-        if not api_key:
+        acquired = await key_store.acquire()
+        if not acquired:
             record_failure("nvidia")
             return stream_error(model, "no usable NVIDIA keys are available", 503)
+        api_key, key_idx = acquired
+        key_id = key_fingerprint(api_key, key_idx)
 
         def _on_timeout() -> None:
             # Mid-stream timeout: cool the key and record the failure. Without
@@ -489,6 +595,11 @@ async def handle_stream(
             # and the death is counted as a success in /stats.
             asyncio.create_task(key_store.cooldown_key(api_key))
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "timeout",
+                f"<{rid} mid-stream timeout, cooled key {key_id}",
+                key=key_id, reason="midstream_timeout",
+            )
 
         try:
             status, _, iterator = await nvidia_client.stream_chat(
@@ -497,10 +608,20 @@ async def handle_stream(
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "timeout",
+                f"<{rid} upstream timeout, cooled key {key_id}",
+                key=key_id, reason="upstream_timeout",
+            )
             return stream_error(model, "upstream request timed out", 504)
         except httpx.HTTPError as exc:
             await key_store.cooldown_key(api_key)
-            logger.warning("stream request failed: %s", exc.__class__.__name__)
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} stream key {key_id} transport error {exc.__class__.__name__}, failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason=exc.__class__.__name__,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
@@ -508,7 +629,7 @@ async def handle_stream(
             return StreamingResponse(
                 stream_with_active_count(
                     keepalive(
-                        stream_router_sse(iterator, model, rid, "nvidia", started),
+                        stream_router_sse(iterator, model, rid, "nvidia", started, key_id, key_failovers),
                         KEEPALIVE_SECONDS,
                     )
                 ),
@@ -518,7 +639,13 @@ async def handle_stream(
 
         if status in {402, 429, 401, 403}:
             await key_store.cooldown_key(api_key)
-            logger.warning("nvidia key cooled after stream %d", status)
+            reason = "auth" if status in {401, 403} else ("credits exhausted" if status == 402 else "quota/billing 429")
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} stream key {key_id} cooled ({reason}, {status}), failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason=reason, status=status,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
@@ -526,6 +653,11 @@ async def handle_stream(
             if server_retries >= MAX_RETRIES:
                 record_failure("nvidia")
                 return stream_error(model, f"upstream returned {status}", status)
+            _log_event(
+                logging.WARNING, rid, "retry",
+                f"<{rid} stream key {key_id} upstream {status}, retry {server_retries + 1}/{MAX_RETRIES}",
+                key=key_id, status=status, retry=server_retries + 1,
+            )
             server_retries += 1
             continue
 
@@ -573,26 +705,41 @@ async def handle_anthropic_stream(
     key_failovers = 0
     server_retries = 0
 
-    def _on_done(pt: int, ct: int, tt: int, tc: int) -> None:
+    def _on_done(pt: int, ct: int, tt: int, tc: int, key_id: str = "", failovers: int = 0) -> None:
         record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
         elapsed = time.monotonic() - started if started else 0
-        logger.info(
-            "<%s status=200 provider=nvidia model=%s tools=%d in_tokens=%d out_tokens=%d Total=%d %.1fs",
-            rid, _short_model(NVIDIA_MODEL), tc, pt, ct, tt, elapsed,
+        _log_event(
+            logging.INFO, rid, "response",
+            f"<{rid} status=200 provider=nvidia model={_short_model(NVIDIA_MODEL)} key={key_id} tools={tc} in_tokens={pt} out_tokens={ct} Total={tt} failovers={failovers} {elapsed:.1f}s",
+            status=200, model=NVIDIA_MODEL, key=key_id,
+            tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
+            failovers=failovers, elapsed_ms=round(elapsed * 1000),
         )
 
     for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
         if key_failovers >= MAX_KEY_FAILOVERS:
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "failover_limit",
+                f"<{rid} exhausted key failover limit ({MAX_KEY_FAILOVERS})",
+                failovers=key_failovers,
+            )
             return _anthropic_stream_error(requested_model, "Atlas exhausted the per-request key failover limit. Retry request.", 503)
-        api_key = await key_store.acquire()
-        if not api_key:
+        acquired = await key_store.acquire()
+        if not acquired:
             record_failure("nvidia")
             return _anthropic_stream_error(requested_model, "no usable NVIDIA keys are available", 503)
+        api_key, key_idx = acquired
+        key_id = key_fingerprint(api_key, key_idx)
 
         def _on_timeout() -> None:
             asyncio.create_task(key_store.cooldown_key(api_key))
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "timeout",
+                f"<{rid} mid-stream timeout, cooled key {key_id}",
+                key=key_id, reason="midstream_timeout",
+            )
 
         try:
             status, _, iterator = await nvidia_client.stream_chat(
@@ -601,10 +748,20 @@ async def handle_anthropic_stream(
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "timeout",
+                f"<{rid} upstream timeout, cooled key {key_id}",
+                key=key_id, reason="upstream_timeout",
+            )
             return _anthropic_stream_error(requested_model, "upstream request timed out", 504)
         except httpx.HTTPError as exc:
             await key_store.cooldown_key(api_key)
-            logger.warning("anthropic stream request failed: %s", exc.__class__.__name__)
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} anthropic stream key {key_id} transport error {exc.__class__.__name__}, failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason=exc.__class__.__name__,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
@@ -612,7 +769,10 @@ async def handle_anthropic_stream(
             return StreamingResponse(
                 stream_with_active_count(
                     keepalive(
-                        openai_sse_to_anthropic_sse(iterator, requested_model, on_done=_on_done),
+                        openai_sse_to_anthropic_sse(
+                            iterator, requested_model,
+                            on_done=lambda pt, ct, tt, tc: _on_done(pt, ct, tt, tc, key_id, key_failovers),
+                        ),
                         KEEPALIVE_SECONDS,
                     )
                 ),
@@ -623,7 +783,13 @@ async def handle_anthropic_stream(
 
         if status in {402, 429, 401, 403}:
             await key_store.cooldown_key(api_key)
-            logger.warning("nvidia key cooled after anthropic stream %d", status)
+            reason = "auth" if status in {401, 403} else ("credits exhausted" if status == 402 else "quota/billing 429")
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} anthropic stream key {key_id} cooled ({reason}, {status}), failover {key_failovers + 1}/{MAX_KEY_FAILOVERS}",
+                key=key_id, reason=reason, status=status,
+                failovers=key_failovers + 1,
+            )
             key_failovers += 1
             continue
 
@@ -631,6 +797,11 @@ async def handle_anthropic_stream(
             if server_retries >= MAX_RETRIES:
                 record_failure("nvidia")
                 return _anthropic_stream_error(requested_model, f"upstream returned {status}", status)
+            _log_event(
+                logging.WARNING, rid, "retry",
+                f"<{rid} anthropic stream key {key_id} upstream {status}, retry {server_retries + 1}/{MAX_RETRIES}",
+                key=key_id, status=status, retry=server_retries + 1,
+            )
             server_retries += 1
             continue
 
@@ -650,52 +821,79 @@ async def stream_router_sse(
     rid: str,
     provider: str,
     started: float,
+    key_id: str = "",
+    failovers: int = 0,
 ) -> AsyncIterator[bytes]:
-    """Stream SSE chunks, capturing the last chunk for usage data, then logging."""
-    last_chunk = b""
+    """Stream SSE chunks, capturing usage across chunk boundaries, then log.
+
+    The previous version only inspected the *last* chunk, so usage data that
+    landed on a non-final chunk — or got split across ``yield`` boundaries —
+    was missed and the request fell back to a ``tools=? in_tokens=?`` line.
+    Here we buffer the partial trailing line and parse every complete ``data:``
+    event as it arrives, keeping the last seen usage. The stream itself is
+    still forwarded unbuffered.
+    """
+    pt = ct = tt = tc = 0
+    saw_usage = False
+    buffer = b""
     async for chunk in iterator:
-        last_chunk = chunk
+        buffer += chunk
+        # Process every complete line in the buffer; keep the trailing partial.
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            line = line.strip()
+            if not line.startswith(b"data:"):
+                continue
+            data_str = line[5:].strip()
+            if data_str == b"[DONE]":
+                continue
+            try:
+                data = json.loads(data_str)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            usage = None
+            if isinstance(data, dict):
+                # NVIDIA/OpenAI put usage at the chunk top level on the final
+                # event; some routers nest it inside choices[-1]. Check both.
+                usage = data.get("usage")
+                if not isinstance(usage, dict):
+                    choices = data.get("choices") or []
+                    if choices and isinstance(choices[-1], dict):
+                        usage = choices[-1].get("usage")
+            if isinstance(usage, dict):
+                tt = int(usage.get("total_tokens") or 0)
+                pt = int(usage.get("prompt_tokens") or 0)
+                ct = int(usage.get("completion_tokens") or 0)
+                if tt or pt or ct:
+                    saw_usage = True
+            # Accumulate tool_calls across all chunks, not just the last.
+            for choice in (data.get("choices") or []) if isinstance(data, dict) else []:
+                if not isinstance(choice, dict):
+                    continue
+                for item in (choice.get("delta", {}).get("tool_calls") or []):
+                    if isinstance(item, dict) and "function" in item:
+                        tc += 1
         yield chunk
 
-    # Extract usage from the last SSE data line (contains the [DONE] or final chunk)
-    try:
-        text = last_chunk.decode("utf-8", errors="replace")
-        for line in text.split("\n"):
-            line = line.strip()
-            if line.startswith("data: "):
-                data_str = line[6:]
-                if data_str == "[DONE]":
-                    continue
-                try:
-                    data = json.loads(data_str)
-                    usage = data.get("choices", [{}])[-1].get("usage")
-                    if isinstance(usage, dict):
-                        tt = int(usage.get("total_tokens", 0))
-                        tc = 0
-                        for item in (data.get("choices", [{}])[-1].get("delta", {}).get("tool_calls") or []):
-                            if isinstance(item, dict):
-                                tc += 1
-                        if tt == 0:
-                            record_success(provider, model, 0, 0, 0, 0)
-                        else:
-                            pt = int(usage.get("prompt_tokens", 0))
-                            ct = int(usage.get("completion_tokens", 0))
-                            record_success(provider, model, pt, ct, tt, tc)
-                        elapsed = time.monotonic() - started
-                        logger.info(
-                            "<%s status=200 provider=nvidia model=%s tools=%d in_tokens=%d out_tokens=%d Total=%d %.1fs",
-                            rid, _short_model(model), tc, pt, ct, tt, elapsed,
-                        )
-                        return
-                except (json.JSONDecodeError, IndexError, KeyError):
-                    pass
+    elapsed = time.monotonic() - started
+    if saw_usage:
+        record_success(provider, model, pt, ct, tt, tc)
+        _log_event(
+            logging.INFO, rid, "response",
+            f"<{rid} status=200 provider=nvidia model={_short_model(model)} key={key_id} tools={tc} in_tokens={pt} out_tokens={ct} Total={tt} failovers={failovers} {elapsed:.1f}s",
+            status=200, model=model, key=key_id,
+            tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
+            failovers=failovers, elapsed_ms=round(elapsed * 1000),
+        )
+    else:
         record_success(provider, model, 0, 0, 0, 0)
-        elapsed = time.monotonic() - started
-        logger.info("<%s status=200 provider=nvidia model=%s tools=? in_tokens=? out_tokens=? %.1fs", rid, _short_model(model), elapsed)
-    except Exception:
-        record_success(provider, model, 0, 0, 0, 0)
-        elapsed = time.monotonic() - started
-        logger.info("<%s status=200 provider=nvidia model=%s %.1fs", rid, _short_model(model), elapsed)
+        _log_event(
+            logging.INFO, rid, "response",
+            f"<{rid} status=200 provider=nvidia model={_short_model(model)} key={key_id} tools={tc} in_tokens=? out_tokens=? failovers={failovers} {elapsed:.1f}s",
+            status=200, model=model, key=key_id,
+            tool_calls=tc, failovers=failovers, elapsed_ms=round(elapsed * 1000),
+            usage_unknown=True,
+        )
 
 
 async def stream_with_active_count(iterator: AsyncIterator[bytes]) -> AsyncIterator[bytes]:

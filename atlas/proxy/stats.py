@@ -146,11 +146,17 @@ def record_failure(provider: str) -> None:
 
 
 def reset_since_restart() -> dict[str, Any]:
-    """Clear restart stats, return old restart data."""
+    """Clear restart stats and stamp a fresh started_at. Return old restart data.
+
+    Called on proxy startup so the ``restart`` bucket reflects the current
+    process lifetime. ``all_time`` is untouched. ``started_at`` is refreshed
+    so callers reading "since restart" see when the current run began.
+    """
     with _STATS_LOCK:
         data = load()
         old = data["restart"]
         data["restart"] = _empty_bucket()
+        data["started_at"] = _now_iso()
         save(data)
         return old
 

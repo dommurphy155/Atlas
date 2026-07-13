@@ -2,15 +2,19 @@
 """Atlas — Python installer.
 
 Runs after install.sh has built the venv and pip-installed requirements.
-Installs the systemd unit, symlinks the atlas CLI, writes default .env,
-and optionally wires ANTHROPIC_* env vars into the user's shell rc.
+Single linear flow: configure .env → collect NVIDIA keys (interactive, min 6)
+→ install + enable + start the systemd unit → symlink the atlas CLI → wire
+ANTHROPIC_* into the shell rc → ensure Claude Code is installed → health-check
+the running proxy → exec claude to drop into the TUI.
 
 Atlas is the NVIDIA-only proxy on port 8788. It is separate from any other
 proxy project and does not reference them.
 """
 import os
 import sys
+import json
 import shutil
+import time
 import subprocess
 from pathlib import Path
 
@@ -27,9 +31,15 @@ PYTHON_BIN = VENV_DIR / "bin" / "python"
 
 UNIT_SRC = PROJECT_DIR / "systemd" / "atlas-proxy.service"
 UNIT_DST = Path("/etc/systemd/system/atlas-proxy.service")
+SERVICE_NAME = "atlas-proxy.service"
 CLI_SRC = PROJECT_DIR / "bin" / "atlas"
 CLI_DST = Path("/usr/local/bin/atlas")
 ENV_FILE = PROJECT_DIR / ".env"
+DEFAULT_KEYS_FILE = PROJECT_DIR / "data" / "keys.txt"
+
+PROXY_URL = "http://127.0.0.1:8788"
+MIN_KEYS = 6
+CLAUDE_INSTALL_URL = "https://claude.ai/install.sh"
 
 DEFAULT_ENV = """\
 # Atlas — NVIDIA-only proxy environment defaults
@@ -58,32 +68,159 @@ def _sudo_run(cmd, **kwargs):
     return _run(cmd, **kwargs)
 
 
-def install_systemd_unit() -> None:
-    """Install atlas-proxy.service into /etc/systemd/system and daemon-reload.
+def _is_valid_key(token: str) -> bool:
+    """Match the sole validation gate in proxy/nvidia_client.py: a non-empty
+    token starting with 'nvapi-'. No length or charset requirement."""
+    return bool(token and token.startswith("nvapi-"))
 
-    Does NOT enable or start the unit — that is left to the operator via the
-    `atlas` CLI. Only the single atlas-proxy.service unit is installed.
+
+def _resolve_keys_file() -> Path:
+    """Resolve the keys file path from .env if present, else the default."""
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("ATLAS_KEYS_FILE=") and not line.startswith("#"):
+                val = line.split("=", 1)[1].strip()
+                if val:
+                    return Path(val)
+    return DEFAULT_KEYS_FILE
+
+
+def _read_existing_keys(keys_file: Path) -> list[str]:
+    """Read keys_file, returning only valid nvapi- tokens, deduped, order preserved."""
+    if not keys_file.exists():
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in keys_file.read_text().splitlines():
+        tok = raw.strip()
+        if _is_valid_key(tok) and tok not in seen:
+            seen.add(tok)
+            out.append(tok)
+    return out
+
+
+def _write_keys(keys_file: Path, keys: list[str]) -> None:
+    """Write keys one-per-line, 0600, parent dir created if missing."""
+    keys_file.parent.mkdir(parents=True, exist_ok=True)
+    keys_file.write_text("\n".join(keys) + ("\n" if keys else ""))
+    keys_file.chmod(0o600)
+
+
+def configure_env_defaults() -> None:
+    """Create .env with ATLAS_* defaults if it does not already exist."""
+    console.print(Panel.fit("[bold cyan]Configuring .env defaults[/]", border_style="cyan"))
+
+    if ENV_FILE.exists():
+        console.print(f"[yellow].env already exists — not overwriting:[/yellow] {ENV_FILE}")
+        return
+
+    ENV_FILE.write_text(DEFAULT_ENV)
+    console.print(f"[green]Wrote default .env:[/green] {ENV_FILE}")
+
+
+def collect_keys() -> None:
+    """Interactively collect NVIDIA API keys. Requires at least MIN_KEYS valid
+    nvapi- tokens. If keys.txt already has >= MIN_KEYS valid keys, skip entry
+    (non-destructive). If stdin is not a TTY and keys are short, warn and skip
+    rather than hang — the proxy tolerates an empty keys file and hot-reloads."""
+    console.print(Panel.fit(
+        f"[bold cyan]NVIDIA API keys (min {MIN_KEYS})[/]", border_style="cyan"))
+
+    keys_file = _resolve_keys_file()
+    existing = _read_existing_keys(keys_file)
+    console.print(f"Keys file: [cyan]{keys_file}[/]")
+    console.print(f"Existing valid keys: [green]{len(existing)}[/]")
+
+    if len(existing) >= MIN_KEYS:
+        console.print(
+            f"[green]Found {len(existing)} keys (>= {MIN_KEYS}) — skipping entry.[/green]")
+        # Rewrite deduped/cleaned set back only if it differs from disk.
+        on_disk = [ln.strip() for ln in keys_file.read_text().splitlines()] if keys_file.exists() else []
+        if on_disk != existing:
+            _write_keys(keys_file, existing)
+            console.print("[dim]Rewrote keys file (removed blanks/dupes/invalid lines).[/dim]")
+        return
+
+    need = MIN_KEYS - len(existing)
+    console.print(
+        f"[yellow]Need {need} more key(s) to reach the minimum of {MIN_KEYS}.[/yellow]")
+    console.print(
+        f"Paste each key on its own line. Enter a blank line or 'done' to finish.")
+
+    if not sys.stdin.isatty():
+        console.print(
+            "[red]stdin is not a TTY — cannot prompt for keys interactively.[/red]\n"
+            f"[yellow]Proceeding with {len(existing)} key(s). The proxy will start "
+            "and hot-reload keys once you add them to the file.[/yellow]")
+        if existing:
+            _write_keys(keys_file, existing)
+        return
+
+    collected: list[str] = []
+    seen: set[str] = set(existing)
+    while True:
+        remaining = MIN_KEYS - (len(existing) + len(collected))
+        prompt = f"  key {len(collected) + 1}"
+        if remaining > 0:
+            prompt += f" ({remaining} more needed)"
+        prompt += " > "
+        try:
+            raw = input(prompt)
+        except EOFError:
+            raw = ""
+        tok = raw.strip()
+        if tok == "" or tok.lower() == "done":
+            total = len(existing) + len(collected)
+            if total < MIN_KEYS:
+                console.print(
+                    f"[red]Only {total} key(s), need {MIN_KEYS}. "
+                    "Keep entering or the proxy will have no keys to serve.[/red]")
+                if tok == "":
+                    continue
+            break
+        if not _is_valid_key(tok):
+            console.print(
+                f"[red]Invalid — key must start with 'nvapi-'. Try again.[/red]")
+            continue
+        if tok in seen:
+            console.print("[yellow]Duplicate — already have that key. Skipping.[/yellow]")
+            continue
+        seen.add(tok)
+        collected.append(tok)
+        console.print(f"[green]Accepted.[/green] ({len(existing) + len(collected)} total)")
+
+    merged = existing + collected
+    _write_keys(keys_file, merged)
+    console.print(f"[green]Wrote {len(merged)} keys to:[/green] {keys_file}")
+
+
+def install_systemd_unit() -> None:
+    """Install atlas-proxy.service, daemon-reload, then enable + start it.
+
+    Unlike the prior installer, this enables and starts the unit so the proxy
+    is live (and survives reboot) by the time the installer finishes.
     """
-    console.print(Panel.fit("[bold cyan]Installing systemd unit[/]", border_style="cyan"))
+    console.print(Panel.fit(
+        "[bold cyan]Installing + starting systemd unit[/]", border_style="cyan"))
 
     if not UNIT_SRC.exists():
         console.print(f"[red]Unit source not found:[/red] {UNIT_SRC}")
-        sys.exit(1)
+        return
 
     unit_text = UNIT_SRC.read_text()
 
     if shutil.which("systemctl") is None:
         console.print(
             "[yellow]systemctl not found on this system — skipping unit install.[/yellow]\n"
-            "Install atlas-proxy.service into /etc/systemd/system manually if needed."
-        )
+            "Install atlas-proxy.service into /etc/systemd/system manually if needed.")
         return
 
     # Write the unit file (via sudo tee if not root).
     if os.geteuid() == 0:
         UNIT_DST.write_text(unit_text)
     else:
-        proc = subprocess.run(
+        subprocess.run(
             ["sudo", "tee", str(UNIT_DST)],
             input=unit_text,
             text=True,
@@ -94,7 +231,25 @@ def install_systemd_unit() -> None:
     console.print(f"[green]Wrote unit:[/green] {UNIT_DST}")
     _sudo_run(["systemctl", "daemon-reload"])
     console.print("[green]systemctl daemon-reload complete[/green]")
-    console.print("[dim]Unit installed but NOT enabled/started. Use `atlas start` to run it.[/dim]")
+
+    # Enable + start now. Non-fatal: warn on failure, keep going.
+    try:
+        _sudo_run(["systemctl", "enable", "--now", SERVICE_NAME])
+        console.print(f"[green]Enabled + started:[/green] {SERVICE_NAME}")
+    except subprocess.CalledProcessError:
+        console.print(
+            f"[red]Failed to enable/start {SERVICE_NAME}.[/red] "
+            "Run `atlas start` manually once keys are present.")
+
+    # Report resulting state.
+    try:
+        active = subprocess.run(
+            ["systemctl", "is-active", SERVICE_NAME],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        console.print(f"[dim]Service state: {active}[/dim]")
+    except subprocess.CalledProcessError:
+        pass
 
 
 def install_cli() -> None:
@@ -103,7 +258,7 @@ def install_cli() -> None:
 
     if not CLI_SRC.exists():
         console.print(f"[red]CLI source not found:[/red] {CLI_SRC}")
-        sys.exit(1)
+        return
 
     CLI_SRC.chmod(0o755)
 
@@ -113,18 +268,6 @@ def install_cli() -> None:
 
     _sudo_run(["ln", "-s", str(CLI_SRC), str(CLI_DST)])
     console.print(f"[green]Linked CLI:[/green] {CLI_DST} -> {CLI_SRC}")
-
-
-def configure_env_defaults() -> None:
-    """Create .env with ATLAS_ defaults if it does not already exist."""
-    console.print(Panel.fit("[bold cyan]Configuring .env defaults[/]", border_style="cyan"))
-
-    if ENV_FILE.exists():
-        console.print(f"[yellow].env already exists — not overwriting:[/yellow] {ENV_FILE}")
-        return
-
-    ENV_FILE.write_text(DEFAULT_ENV)
-    console.print(f"[green]Wrote default .env:[/green] {ENV_FILE}")
 
 
 def wire_claude_env() -> None:
@@ -162,6 +305,159 @@ def wire_claude_env() -> None:
     console.print("[dim]Restart your shell (or source the rc file) for the exports to take effect.[/dim]")
 
 
+def ensure_claude() -> str | None:
+    """Ensure `claude` is on PATH. If missing, install via Anthropic's native
+    installer (curl | bash). Returns the resolved claude path or None."""
+    console.print(Panel.fit("[bold cyan]Ensuring Claude Code is installed[/]", border_style="cyan"))
+
+    claude_path = shutil.which("claude")
+    if claude_path:
+        try:
+            ver = subprocess.run(
+                ["claude", "--version"], capture_output=True, text=True, check=False,
+            ).stdout.strip()
+            console.print(f"[green]claude found:[/green] {claude_path}" +
+                          (f" ({ver})" if ver else ""))
+        except Exception:
+            console.print(f"[green]claude found:[/green] {claude_path}")
+        return claude_path
+
+    console.print("[yellow]claude not on PATH — installing via Anthropic native installer...[/yellow]")
+    if shutil.which("curl") is None:
+        console.print("[red]curl not found — cannot install claude automatically.[/red]")
+        return None
+
+    # Native installer writes ~/.local/bin/claude. Ensure it's on PATH for this process.
+    local_bin = Path.home() / ".local" / "bin"
+    if str(local_bin) not in os.environ.get("PATH", "").split(":"):
+        os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+
+    try:
+        _run(f"curl -fsSL {CLAUDE_INSTALL_URL} | bash", shell=True)
+        console.print("[green]Claude Code install script finished.[/green]")
+    except subprocess.CalledProcessError:
+        console.print(
+            "[red]Native installer failed.[/red] Install claude manually, then re-run.")
+        return None
+
+    claude_path = shutil.which("claude")
+    if claude_path:
+        console.print(f"[green]claude now available:[/green] {claude_path}")
+        return claude_path
+
+    console.print(
+        f"[yellow]claude still not on PATH after install.[/yellow] "
+        f"Check {local_bin} and ensure it's on your PATH.")
+    return None
+
+
+def health_check() -> dict | None:
+    """Poll /health then /stats. Warn (don't exit) on failure."""
+    console.print(Panel.fit("[bold cyan]Health-checking the proxy[/]", border_style="cyan"))
+
+    import urllib.request
+    import urllib.error
+
+    # Poll /health for up to ~15s.
+    health_ok = False
+    for _ in range(30):
+        try:
+            with urllib.request.urlopen(f"{PROXY_URL}/health", timeout=2) as r:
+                if 200 <= r.status < 300:
+                    health_ok = True
+                    break
+        except Exception:
+            time.sleep(0.5)
+
+    if not health_ok:
+        console.print(f"[red]Proxy did not respond healthy at {PROXY_URL}/health[/red]")
+        _print_service_status()
+        return None
+    console.print(f"[green]Proxy healthy at {PROXY_URL}/health[/green]")
+
+    # Fetch /stats for key count.
+    stats = None
+    try:
+        with urllib.request.urlopen(f"{PROXY_URL}/stats", timeout=3) as r:
+            stats = json.loads(r.read().decode())
+    except Exception as e:
+        console.print(f"[red]Could not read /stats: {e}[/red]")
+        _print_service_status()
+        return None
+
+    total_keys = stats.get("total_keys", 0)
+    if total_keys < 1:
+        console.print(
+            f"[red]Proxy is up but reports total_keys={total_keys}.[/red] "
+            "Keys may still be loading (hot-reload is 5s) — check `atlas status` shortly.")
+    else:
+        console.print(f"[green]Proxy serving with {total_keys} key(s).[/green]")
+    return stats
+
+
+def _print_service_status() -> None:
+    """Print a short systemctl status excerpt + a hint, non-fatal."""
+    if shutil.which("systemctl") is None:
+        return
+    try:
+        out = subprocess.run(
+            ["systemctl", "status", SERVICE_NAME, "--no-pager", "-n", "10"],
+            capture_output=True, text=True, check=False,
+        ).stdout
+        console.print(f"[dim]{out}[/dim]")
+    except Exception:
+        pass
+    console.print("[dim]Inspect logs with: atlas logs[/dim]")
+
+
+def launch_claude(claude_path: str | None, stats: dict | None) -> None:
+    """Print a summary, then exec claude to open the TUI. Per failure policy,
+    warn if anything is off but still launch (if claude exists)."""
+    total_keys = (stats or {}).get("total_keys", 0)
+
+    summary = Table(title="Atlas install summary", show_header=True, header_style="bold magenta")
+    summary.add_column("Field", style="cyan", no_wrap=True)
+    summary.add_column("Value", style="green")
+    summary.add_row("Service", SERVICE_NAME)
+    summary.add_row("Port", "8788")
+    summary.add_row("Unit file", str(UNIT_DST))
+    summary.add_row("CLI", str(CLI_DST))
+    summary.add_row("Keys loaded", str(total_keys))
+    summary.add_row("Claude", claude_path or "[red]not found[/red]")
+    summary.add_row("Project", str(PROJECT_DIR))
+    console.print()
+    console.print(summary)
+
+    if not claude_path:
+        console.print(
+            Panel.fit(
+                "[bold red]claude is not installed.[/bold red]\n"
+                "Install it with:  [bold]curl -fsSL https://claude.ai/install.sh | bash[/bold]\n"
+                "Then run:         [bold]claude[/bold]",
+                border_style="red",
+            )
+        )
+        sys.exit(0)
+
+    if total_keys < 1:
+        console.print(
+            "[yellow]Warning: proxy has no keys loaded — claude will launch but "
+            "requests will fail until keys are in data/keys.txt.[/yellow]")
+
+    console.print()
+    console.print(Panel.fit(
+        "[bold green]Atlas installed. Launching Claude Code...[/bold green]",
+        border_style="green"))
+
+    # Set ANTHROPIC_* in this process so the first launch talks to the proxy,
+    # even before the user sources their rc file.
+    os.environ["ANTHROPIC_BASE_URL"] = PROXY_URL
+    os.environ["ANTHROPIC_API_KEY"] = "atlas"
+
+    # Replace this process with claude (mirrors install.sh's exec handoff).
+    os.execvp(claude_path, ["claude"])
+
+
 def main() -> None:
     console.print(
         Panel.fit(
@@ -176,39 +472,27 @@ def main() -> None:
     console.print(f"Python:      [cyan]{PYTHON_BIN}[/]")
 
     steps = [
-        ("Install systemd unit", install_systemd_unit),
-        ("Install atlas CLI", install_cli),
         ("Configure .env defaults", configure_env_defaults),
+        ("Collect NVIDIA keys", collect_keys),
+        ("Install + start systemd unit", install_systemd_unit),
+        ("Install atlas CLI", install_cli),
         ("Wire shell ANTHROPIC env", wire_claude_env),
+        ("Ensure Claude Code", ensure_claude),
+        ("Health-check proxy", health_check),
     ]
 
+    claude_path = None
+    stats = None
     for label, fn in steps:
         console.print()
-        fn()
+        result = fn()
+        # Capture the two return values we need for the final launch.
+        if label == "Ensure Claude Code":
+            claude_path = result
+        elif label == "Health-check proxy":
+            stats = result
 
-    # Final summary.
-    summary = Table(title="Atlas install summary", show_header=True, header_style="bold magenta")
-    summary.add_column("Field", style="cyan", no_wrap=True)
-    summary.add_column("Value", style="green")
-    summary.add_row("Service", "atlas-proxy.service")
-    summary.add_row("Port", "8788")
-    summary.add_row("Unit file", str(UNIT_DST))
-    summary.add_row("CLI", str(CLI_DST))
-    summary.add_row("Env file", str(ENV_FILE))
-    summary.add_row("Project", str(PROJECT_DIR))
-    console.print()
-    console.print(summary)
-
-    console.print()
-    console.print(
-        Panel.fit(
-            "[bold green]Atlas installed.[/bold green]\n"
-            "Start it with:  [bold]atlas start[/]\n"
-            "Status:         [bold]systemctl status atlas-proxy[/]\n"
-            "Logs:           [bold]journalctl -u atlas-proxy -f[/]",
-            border_style="green",
-        )
-    )
+    launch_claude(claude_path, stats)
 
 
 if __name__ == "__main__":
