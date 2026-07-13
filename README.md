@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/git_banner.svg" alt="Atlas" width="100%">
+  <img src="assets/git_banner.svg" alt="Atlas" width="100%">
 </p>
 
 <h1 align="center">Atlas</h1>
