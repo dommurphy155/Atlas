@@ -1,12 +1,13 @@
-# Atlas NVIDIA Proxy — systemd unit
+# Atlas NVIDIA Proxy — systemd unit (TEMPLATE)
 #
-# Atlas is a standalone NVIDIA-only proxy service. It runs on port 8788 and is
-# completely separate from any other proxy project. This unit launches the
-# FastAPI/uvicorn app via the Atlas virtualenv.
+# This file is a template. atlas/setup/installer.py substitutes the __VAR__
+# placeholders from PROJECT_DIR + the detected user before writing it to
+# /etc/systemd/system/atlas-proxy.service. Do not install this file verbatim —
+# the paths below are intentionally unresolved so they work on any machine.
 #
 # Service name: atlas-proxy.service
 # Port: 8788 (ATLAS_PROXY_PORT)
-# Model: moonshotai/kimi-k2.6 via NVIDIA integrate API
+# Model: z-ai/glm-5.2 via NVIDIA integrate API
 
 [Unit]
 Description=Atlas NVIDIA Proxy
@@ -15,19 +16,22 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/claude/atlas
+User=__ATLAS_USER__
+WorkingDirectory=__PROJECT_DIR__
 
 # Inline environment (no EnvironmentFile). ATLAS_ prefix only.
-Environment=HOME=/root
-Environment=PATH=/root/claude/atlas/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# ATLAS_KEYS_FILE is deliberately omitted — the proxy defaults to
+# ROOT_DIR/data/keys.txt (resolved from its own __file__), which is always
+# correct regardless of where the repo is checked out.
+Environment=HOME=__ATLAS_HOME__
+Environment=PATH=__VENV_BIN__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=ATLAS_PROXY_HOST=127.0.0.1
 Environment=ATLAS_PROXY_PORT=8788
-Environment=ATLAS_KEYS_FILE=/root/claude/atlas/data/keys.txt
 Environment=ATLAS_NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
 Environment=ATLAS_NVIDIA_MODEL=z-ai/glm-5.2
 Environment=ATLAS_PROXY_RELOAD_SECONDS=5
 Environment=ATLAS_PROXY_MAX_KEY_FAILOVERS=3
+Environment=ATLAS_PROXY_COOLDOWN_SECONDS=60
 Environment=ATLAS_PROXY_REQUEST_TIMEOUT=300
 Environment=ATLAS_PROXY_CONNECT_TIMEOUT=10
 Environment=ATLAS_PROXY_READ_TIMEOUT=180
@@ -36,7 +40,7 @@ Environment=ATLAS_PROXY_MAX_RETRIES=2
 Environment=ATLAS_PROXY_DEBUG=0
 
 # Launch the proxy app module from the venv python.
-ExecStart=/root/claude/atlas/.venv/bin/python -m proxy.atlas_proxy
+ExecStart=__VENV_PYTHON__ -m proxy.atlas_proxy
 
 Restart=always
 RestartSec=5

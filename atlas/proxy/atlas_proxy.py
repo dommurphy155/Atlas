@@ -62,6 +62,11 @@ READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "180"))
 KEEPALIVE_SECONDS = float(os.getenv("ATLAS_PROXY_KEEPALIVE_SECONDS", "15"))
 MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
 MAX_KEY_FAILOVERS = int(os.getenv("ATLAS_PROXY_MAX_KEY_FAILOVERS", "3"))
+# Per-key cooldown (seconds). When a key dies upstream (quota/429/5xx), it is
+# blacklisted for this long before the pool hands it out again. After it
+# elapses the key auto-recovers — acquire() simply stops skipping it. 60s
+# matches a typical NVIDIA rate-limit window.
+COOLDOWN_SECONDS = float(os.getenv("ATLAS_PROXY_COOLDOWN_SECONDS", "60"))
 DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
 # Log output shape. "pretty" (default) = the colored one-liner. "json" = one
 # JSON object per record, for piping to jq or shipping to an aggregator.
@@ -137,7 +142,7 @@ logger = logging.getLogger("atlas-proxy")
 for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpx._client", "watchfiles"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 
-key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS)
+key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
 nvidia_client = NvidiaClient(NVIDIA_BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
 watch_task: asyncio.Task[None] | None = None
 active_requests = 0

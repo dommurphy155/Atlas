@@ -9,12 +9,13 @@ from typing import Any
 # Round-robin NVIDIA key pool with per-key cooldown.
 #
 # Keys are loaded from disk (one per line) and rotate indefinitely. A key that
-# fails upstream (429/401/403/5xx) is put on a short cooldown so it is skipped
-# for COOLDOWN_SECONDS rather than retried every rotation. Keys are never
+# fails upstream (429/401/403/5xx) is blacklisted for COOLDOWN_SECONDS (default
+# 60s) so it is skipped until it auto-recovers, rather than retried every
+# rotation. Keys are never
 # permanently removed — they reload from disk on mtime change, so the operator
 # can edit data/keys.txt live and the pool picks it up.
 class NvidiaKeyStore:
-    def __init__(self, keys_file: str, reload_seconds: int = 5, cooldown_seconds: float = 30.0) -> None:
+    def __init__(self, keys_file: str, reload_seconds: int = 5, cooldown_seconds: float = 60.0) -> None:
         self.keys_file = Path(keys_file)
         self.reload_seconds = max(1, reload_seconds)
         self.cooldown_seconds = max(0.0, cooldown_seconds)

@@ -1,7 +1,10 @@
 # Atlas — NVIDIA-only proxy requirements
-httpx
-h2
-python-dotenv
-fastapi
-uvicorn[standard]
-rich
+# Pinned to known-good versions for reproducible installs across machines.
+# Bump deliberately; a fresh `pip install` six months on won't silently pull
+# a fastapi/uvicorn major that breaks the proxy.
+httpx==0.28.1
+h2==4.3.0
+python-dotenv==1.2.2
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+rich==15.0.0
