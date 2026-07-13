@@ -71,13 +71,6 @@ DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
 # Log output shape. "pretty" (default) = the colored one-liner. "json" = one
 # JSON object per record, for piping to jq or shipping to an aggregator.
 LOG_FORMAT = os.getenv("ATLAS_PROXY_LOG_FORMAT", "pretty").lower()
-# Dump every incoming request body to a tmp file and log the path, so the
-# exact payload the client sent can be inspected after the fact. The file is
-# named <rid>.json, tying it to the request's other log lines. Set to "0" to
-# disable (e.g. once you've captured what you need). Files live in tmpfs and
-# are wiped on reboot; clean the dir by hand if it grows.
-LOG_REQUESTS = os.getenv("ATLAS_PROXY_LOG_REQUESTS", "1") == "1"
-REQUEST_LOG_DIR = Path(os.getenv("ATLAS_PROXY_REQUEST_LOG_DIR", "/tmp/atlas-requests"))
 
 
 class _CleanFormatter(logging.Formatter):
@@ -212,40 +205,6 @@ def _log_event(
     logger.log(level, message, extra=extras)
 
 
-def _dump_request(rid: str, path: str, payload: dict[str, Any], headers: dict[str, str]) -> None:
-    """Persist the raw incoming request to a tmp file and log its path.
-
-    The file is the exact JSON the client sent (post-parse, pre-mutation), so
-    it captures the original body before system-prompt swapping, Anthropic→OpenAI
-    translation, or model normalization touch it. Named <rid>.json so it lines
-    up with the request's other log lines via the shared rid.
-    """
-    try:
-        REQUEST_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        dest = REQUEST_LOG_DIR / f"{rid}.json"
-        record = {
-            "rid": rid,
-            "path": path,
-            "method": "POST",
-            "headers": headers,
-            "body": payload,
-        }
-        dest.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
-        _log_event(
-            logging.INFO, rid, "request_dump",
-            f">{rid} request logged to {dest}",
-            file=str(dest),
-        )
-    except OSError as exc:
-        # A failed dump must never break the request — it's observability, not
-        # control flow. Log and carry on.
-        _log_event(
-            logging.WARNING, rid, "request_dump_failed",
-            f">{rid} failed to dump request: {exc.__class__.__name__}",
-            error=str(exc),
-        )
-
-
 def _extract_usage(json_data: dict[str, Any]) -> tuple[int, int, int, int]:
     """Extract (prompt_tokens, completion_tokens, total_tokens, tool_calls)."""
     usage = json_data.get("usage") if isinstance(json_data, dict) else None
@@ -373,8 +332,6 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
         f">{rid} {_short_model(model)} stream={'yes' if stream else 'no'} provider=nvidia",
         model=model, stream=stream, provider="nvidia",
     )
-    if LOG_REQUESTS:
-        _dump_request(rid, "/v1/chat/completions", body, dict(request.headers))
 
     if stream:
         # Increment here; the matching decrement happens in
@@ -431,8 +388,6 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
         model=requested_model, upstream_model=NVIDIA_MODEL,
         stream=bool(body.get("stream")), provider="nvidia",
     )
-    if LOG_REQUESTS:
-        _dump_request(rid, "/v1/messages", original_body, dict(request.headers))
 
     # Streaming: route through the real-time OpenAI→Anthropic SSE adapter
     # instead of buffering the whole response and faking the event stream.
