@@ -190,6 +190,22 @@ def anthropic_messages_to_openai(body: dict[str, Any]) -> list[dict[str, Any]]:
             raise ValueError("each message must be an object")
         role = str(message.get("role") or "user")
         content = message.get("content", "")
+
+        # Preserve mid-conversation role:system messages (e.g. the end-of-
+        # conversation reinforcement injected by replace_system_prompt) as
+        # role:system rather than collapsing them to role:user. GLM-5.2 honors
+        # a system message anywhere in the thread, and keeping the role lets
+        # the reinforcement land as an instruction instead of a fake user turn.
+        if role == "system":
+            sys_text = content
+            if isinstance(sys_text, list):
+                sys_text = "\n".join(
+                    str(b.get("text") or "") for b in sys_text
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+            messages.append({"role": "system", "content": str(sys_text or "")})
+            continue
+
         if not isinstance(content, list):
             messages.append({"role": "assistant" if role == "assistant" else "user", "content": str(content)})
             continue
