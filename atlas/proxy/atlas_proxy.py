@@ -29,6 +29,7 @@ from proxy.openai_compat import (
     openai_response_to_anthropic,
     openai_error,
     openai_sse_to_anthropic_sse,
+    sanitize_openai_payload,
     sse_from_text,
 )
 from proxy.stats import record_failure, record_success, get_status as stats_status, reset_since_restart
@@ -318,9 +319,17 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
     if model == "default":
         model = NVIDIA_MODEL
 
+    # Sanitize the client body for NVIDIA's GLM models before it leaves the
+    # proxy. The old code did dict(body) and forwarded every client field
+    # verbatim — out-of-range sampling params (temperature=2.5, top_p=2,
+    # frequency_penalty=3, ...) and unsupported OpenAI-only fields (top_k,
+    # seed, n, logprobs, reasoning_effort, ...) hit NVIDIA and came back as a
+    # hard HTTP 400 ("upstream returned 400"). sanitize_openai_payload clamps
+    # the sampling ranges and drops fields GLM-5.2 doesn't accept.
     upstream_payload = dict(body)
     upstream_payload["model"] = model
     upstream_payload["messages"] = messages
+    upstream_payload = sanitize_openai_payload(upstream_payload)
     stream = bool(upstream_payload.get("stream", False))
 
     replace_system_prompt(upstream_payload, provider="openai")
@@ -613,7 +622,7 @@ async def handle_stream(
             )
 
         try:
-            status, _, iterator = await nvidia_client.stream_chat(
+            status, _, iterator, error_message = await nvidia_client.stream_chat(
                 api_key, payload, rid=rid, on_timeout=_on_timeout
             )
         except httpx.TimeoutException:
@@ -681,8 +690,19 @@ async def handle_stream(
             server_retries += 1
             continue
 
+        # Any other 4xx (400/405/413/...) — surface the real upstream message
+        # so the client sees "upstream returned 400: Validation: ..." instead
+        # of a bare status. The sanitizer above should have prevented the
+        # common sampling-param 400s; this is the catch-all for anything we
+        # didn't anticipate (malformed tool schema, unsupported field, ...).
         record_failure("nvidia")
-        return stream_error(model, f"upstream returned {status}", status)
+        detail = f": {error_message}" if error_message else ""
+        _log_event(
+            logging.WARNING, rid, "upstream_error",
+            f"<{rid} stream key {key_id} upstream {status}{detail}",
+            key=key_id, status=status, error=error_message,
+        )
+        return stream_error(model, f"upstream returned {status}{detail}", status)
 
     record_failure("nvidia")
     return stream_error(model, "no usable NVIDIA keys are available", 503)
@@ -762,7 +782,7 @@ async def handle_anthropic_stream(
             )
 
         try:
-            status, _, iterator = await nvidia_client.stream_chat(
+            status, _, iterator, error_message = await nvidia_client.stream_chat(
                 api_key, payload, rid=rid, on_timeout=_on_timeout
             )
         except httpx.TimeoutException:
@@ -832,8 +852,17 @@ async def handle_anthropic_stream(
             server_retries += 1
             continue
 
+        # Any other 4xx (400/405/413/...) — surface the real upstream message.
+        # The sanitizer should have prevented the common sampling-param 400s;
+        # this is the catch-all for anything else (malformed tool schema, ...).
         record_failure("nvidia")
-        return _anthropic_stream_error(requested_model, f"upstream returned {status}", status)
+        detail = f": {error_message}" if error_message else ""
+        _log_event(
+            logging.WARNING, rid, "upstream_error",
+            f"<{rid} anthropic stream key {key_id} upstream {status}{detail}",
+            key=key_id, status=status, error=error_message,
+        )
+        return _anthropic_stream_error(requested_model, f"upstream returned {status}{detail}", status)
 
     record_failure("nvidia")
     return _anthropic_stream_error(requested_model, "no usable NVIDIA keys are available", 503)
