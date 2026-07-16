@@ -280,6 +280,89 @@ def anthropic_tool_choice_to_openai(tool_choice: Any) -> Any:
     return None
 
 
+def _clamp(value: Any, lo: float, hi: float, default: float) -> float:
+    """Coerce to float and clamp to [lo, hi]; fall back to default if unusable.
+
+    NVIDIA's GLM models validate sampling params server-side and return a hard
+    HTTP 400 (e.g. "Temperature must be between 0 and 2, got 2.5") for anything
+    out of range. Clients — especially OpenAI-style callers hitting
+    /v1/chat/completions — forward whatever they want (temperature=2.5, top_p=2,
+    frequency_penalty=3, ...), so we clamp before the request ever leaves the
+    proxy instead of surfacing the 400.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    if v != v or v in (float("inf"), float("-inf")):  # NaN / inf guard
+        return default
+    return lo if v < lo else hi if v > hi else v
+
+
+def sanitize_openai_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a chat-completions payload for NVIDIA's GLM models.
+
+    Two jobs:
+    1. Clamp sampling params into the ranges NVIDIA accepts (out-of-range =
+       HTTP 400 upstream). temperature [0,2], top_p [0,1], frequency_penalty
+       and presence_penalty [-2,2].
+    2. Drop fields GLM-5.2 doesn't support. The OpenAI path forwards the entire
+       client body via dict(body), so unknown OpenAI-only fields (top_k, seed,
+       n, logprobs, logit_bias, user, reasoning_effort, max_completion_tokens,
+       response_format, stream_options, service_tier, ...) ride along and can
+       either 400 or silently distort behavior. Keep an explicit allowlist so
+       the upstream payload is exactly what GLM expects.
+    """
+    # ── max_tokens: positive int, default 1024 ────────────────────────────
+    max_tokens = payload.get("max_tokens")
+    if not isinstance(max_tokens, int) or max_tokens <= 0:
+        # max_completion_tokens is the newer OpenAI spelling; honor it if the
+        # caller used it instead of max_tokens.
+        alt = payload.get("max_completion_tokens")
+        if isinstance(alt, int) and alt > 0:
+            max_tokens = alt
+        else:
+            max_tokens = 1024
+
+    out: dict[str, Any] = {
+        "model": str(payload.get("model") or ""),
+        "messages": payload.get("messages") or [],
+        "max_tokens": max_tokens,
+        # temperature default 0.7 (the previous behavior); clamped to [0, 2].
+        "temperature": _clamp(payload.get("temperature"), 0.0, 2.0, 0.7),
+        "stream": bool(payload.get("stream", False)),
+    }
+
+    # top_p: optional, [0, 1]. Only send it if the caller supplied one —
+    # GLM-5.2 defaults sensibly when absent.
+    if payload.get("top_p") is not None:
+        out["top_p"] = _clamp(payload.get("top_p"), 0.0, 1.0, 1.0)
+
+    # penalties: optional, [-2, 2].
+    for field in ("frequency_penalty", "presence_penalty"):
+        if payload.get(field) is not None:
+            out[field] = _clamp(payload.get(field), -2.0, 2.0, 0.0)
+
+    # stop: passthrough but normalize to list[str] / drop if empty.
+    stop = payload.get("stop")
+    if isinstance(stop, str) and stop:
+        out["stop"] = [stop]
+    elif isinstance(stop, list) and stop:
+        out["stop"] = [s for s in stop if isinstance(s, str) and s]
+
+    # tools / tool_choice: passthrough (already OpenAI-shaped upstream of this).
+    tools = payload.get("tools")
+    if isinstance(tools, list) and tools:
+        out["tools"] = tools
+        tc = payload.get("tool_choice")
+        if tc is not None:
+            out["tool_choice"] = tc
+        else:
+            out["tool_choice"] = "auto"
+
+    return out
+
+
 def anthropic_openai_payload(body: dict[str, Any], upstream_model: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": upstream_model,
@@ -295,7 +378,10 @@ def anthropic_openai_payload(body: dict[str, Any], upstream_model: str) -> dict[
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = anthropic_tool_choice_to_openai(body.get("tool_choice")) or "auto"
-    return payload
+    # Sanitize (clamp sampling params, drop unsupported fields) before the
+    # payload hits NVIDIA. Anthropic clients can still send out-of-range
+    # temperature; clamp it instead of letting NVIDIA 400 the request.
+    return sanitize_openai_payload(payload)
 
 
 def openai_response_to_anthropic(model: str, payload: dict[str, Any]) -> dict[str, Any]:

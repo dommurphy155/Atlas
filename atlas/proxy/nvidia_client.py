@@ -109,8 +109,14 @@ class NvidiaClient:
         payload: dict[str, Any],
         rid: str = "",
         on_timeout: Callable[[], None] | None = None,
-    ) -> tuple[int, httpx.Headers, AsyncIterator[bytes]]:
+    ) -> tuple[int, httpx.Headers, AsyncIterator[bytes], str]:
         """Open a streaming chat request.
+
+        Returns ``(status, headers, iterator, error_message)``. ``error_message``
+        is the real upstream message (e.g. NVIDIA's "Validation: Temperature
+        must be between 0 and 2, got 2.5") when ``status >= 400``, empty string
+        otherwise — so the caller can surface it instead of the generic
+        "upstream returned 400".
 
         ``on_timeout`` is invoked once if the upstream goes silent past the
         read deadline mid-stream — the proxy uses it to cool the key and
@@ -124,6 +130,29 @@ class NvidiaClient:
             json=payload,
         )
         response = await self._stream_client.send(request, stream=True)
+
+        # On a non-2xx upstream status the SSE body is usually a short JSON
+        # error (e.g. NVIDIA's 400 "Validation: Temperature must be between
+        # 0 and 2"). Drain it so the caller can surface the real message
+        # instead of the generic "upstream returned 400". The stream is small
+        # and terminal, so buffering it whole is safe.
+        if response.status_code >= 400:
+            error_body = b""
+            try:
+                async for chunk in response.aiter_bytes():
+                    error_body += chunk
+                    if len(error_body) > 4096:  # cap; error bodies are tiny
+                        break
+            finally:
+                await response.aclose()
+            error_text = ""
+            try:
+                error_text = error_body.decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            message = _extract_error_message(error_text)
+            logger.warning("<%s upstream %d: %s", rid, response.status_code, message)
+            return response.status_code, response.headers, _error_iterator(error_text), message
 
         async def iterator() -> AsyncIterator[bytes]:
             try:
@@ -157,7 +186,7 @@ class NvidiaClient:
             finally:
                 await response.aclose()
 
-        return response.status_code, response.headers, iterator()
+        return response.status_code, response.headers, iterator(), ""
 
     def _headers(self, api_key: str) -> dict[str, str]:
         return {
@@ -199,3 +228,57 @@ def _timeout_kind(exc: httpx.TimeoutException) -> str:
     if isinstance(exc, httpx.WriteTimeout):
         return "write_timeout"
     return "timeout"
+
+
+def _extract_error_message(error_text: str) -> str:
+    """Pull a human message out of an upstream error body.
+
+    NVIDIA's chat-completions errors come in a few shapes:
+    - {"message": "Validation: Temperature must be between 0 and 2, got 2.5",
+       "type": "Bad Request", "code": 400}
+    - {"error": {"message": "...", "type": "...", "code": ...}}   (OpenAI shape)
+    - {"detail": "..."}                                            (FastAPI shape)
+    Fall back to the raw text if none match.
+    """
+    if not error_text:
+        return "upstream error"
+    try:
+        data = json.loads(error_text)
+    except (ValueError, TypeError):
+        return error_text.strip()[:500] or "upstream error"
+    if isinstance(data, dict):
+        # NVIDIA native: top-level "message".
+        msg = data.get("message")
+        if isinstance(msg, str) and msg:
+            return msg
+        # OpenAI shape.
+        err = data.get("error")
+        if isinstance(err, dict):
+            m = err.get("message")
+            if isinstance(m, str) and m:
+                return m
+        # FastAPI shape.
+        detail = data.get("detail")
+        if isinstance(detail, str) and detail:
+            return detail
+        # NVIDIA 429 shape: {"status":429,"title":"Too Many Requests"}.
+        title = data.get("title")
+        if isinstance(title, str) and title:
+            return title
+    return error_text.strip()[:500] or "upstream error"
+
+
+async def _error_iterator(error_text: str) -> AsyncIterator[bytes]:
+    """Replay a captured upstream error body as an OpenAI-shaped SSE error chunk.
+
+    The streaming handlers consume the iterator's bytes through the SSE adapters,
+    which already understand an ``{"error": {...}}`` chunk (see
+    openai_sse_to_anthropic_sse / stream_router_sse). Emitting the real
+    upstream message here means a 400 surfaces as
+    "upstream returned 400: <Validation: ...>" instead of a bare
+    "upstream returned 400".
+    """
+    message = _extract_error_message(error_text)
+    err = {"error": {"message": message, "type": "upstream_error"}}
+    yield f"data: {json.dumps(err)}\n\n".encode()
+    yield b"data: [DONE]\n\n"
