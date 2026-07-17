@@ -36,17 +36,30 @@ Atlas is a single-provider NVIDIA proxy. It speaks both **OpenAI** and **Anthrop
 - Injects a **system prompt override** and strips `<system-reminder>` harness blocks before forwarding
 - SSE keepalive comments so reasoning models don't trip middlebox idle timers while they think
 - `/health`, `/stats`, and a `atlas tokens` usage dashboard
-- Runs as a standalone systemd service on `127.0.0.1:8788`
+- Runs as a standalone service on `127.0.0.1:8788` — **systemd** on Linux, **launchd** on macOS, **Windows Service** on Windows; one installer auto-detects the host and wires the native backend
 
 ## 🚀 Quick start
 
+**Linux / macOS:**
 ```bash
-cd ~/claude/atlas && bash setup/install.sh   # venv + deps + systemd unit + CLI + .env
+cd ~/claude/atlas && bash setup/install.sh   # venv + deps + service + CLI + .env
 atlas start                                   # fire it up
 atlas status                                  # service + /health + /stats
 ```
 
-Drop your NVIDIA keys in `data/keys.txt` (one `nvapi-…` per line) and you're live. The installer also wires `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` into your shell rc so Claude Code picks it up automatically — see [Wire up Claude Code](#-wire-up-claude-code).
+**Windows (PowerShell, run as Administrator):**
+```powershell
+cd atlas; powershell -ExecutionPolicy Bypass -File setup\install.ps1
+```
+
+The installer auto-detects your OS and runs the native flow — **systemd** on
+Linux, **launchd** on macOS, **Windows Service** on Windows — then wires
+`ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` into your environment (shell rc on
+Unix, `setx` on Windows) so Claude Code picks it up automatically. See
+[Wire up Claude Code](#-wire-up-claude-code).
+
+Drop your NVIDIA keys in `data/keys.txt` (one `nvapi-…` per line) and you're
+live.
 
 ## 🔌 Wire up Claude Code
 
@@ -64,7 +77,8 @@ Source your rc (or open a new shell), launch `claude`, and it now talks to the N
 ```
 atlas/
 ├── bin/
-│   └── atlas                 # operator CLI (start/stop/status/logs/tokens)
+│   ├── atlas                 # operator CLI — Linux/macOS (bash)
+│   └── atlas.cmd             # operator CLI — Windows (drives the Windows Service)
 ├── proxy/
 │   ├── atlas_proxy.py        # FastAPI app — endpoints, streaming, failover loop
 │   ├── nvidia_client.py      # httpx client + SSE streaming + prewarm
@@ -78,23 +92,29 @@ atlas/
 │   ├── system_prompt_override.txt
 │   └── proxy_stats.json      # written after every request
 ├── setup/
-│   ├── install.sh            # bootstrap: venv + pip, hands off to installer.py
-│   ├── installer.py          # systemd unit, CLI symlink, .env, shell wiring
+│   ├── install.sh            # Unix bootstrap: venv + pip, hands off to installer.py
+│   ├── install.ps1           # Windows bootstrap: venv + pip, hands off to installer.py
+│   ├── installer.py          # OS-aware installer (systemd/launchd/Windows Service)
+│   ├── com.atlas.proxy.plist # macOS LaunchAgent template
+│   ├── atlas_windows_service.py  # Windows Service host (pywin32)
 │   └── requirements.txt
 └── systemd/
-    └── atlas-proxy.service
+    └── atlas-proxy.service   # Linux systemd unit template
 ```
 
 ## 🖥️ CLI
 
 | Command | Description |
 | --- | --- |
-| `atlas start` | Start the systemd service |
-| `atlas stop` | Stop the systemd service |
-| `atlas restart` | Restart the systemd service |
+| `atlas start` | Start the service (systemd / launchd / Windows Service) |
+| `atlas stop` | Stop the service |
+| `atlas restart` | Restart the service |
 | `atlas status` | Service status + probe `/health` and `/stats` |
-| `atlas logs` | Follow the journal (Ctrl-C to exit) — pass extra flags for one-shot: `atlas logs -n 100`, `atlas logs --since '10 min ago'`, `atlas logs -o json \| jq .` |
+| `atlas logs` | Follow the logs (Ctrl-C to exit). Linux: `journalctl`; macOS: `~/Library/Logs/atlas-proxy.log`; Windows: the proxy log file. Pass extra flags on Linux for a one-shot query: `atlas logs -n 100`, `atlas logs --since '10 min ago'`, `atlas logs -o json \| jq .` |
 | `atlas tokens` | Clean since-restart token/usage summary (requests, success rate, in/out/total tokens, tool calls, per-model breakdown) |
+
+On Linux/macOS the `atlas` command is the bash `bin/atlas`; on Windows it's
+`bin/atlas.cmd`, which drives the AtlasProxy Windows Service via `sc.exe`.
 
 ## 📡 Endpoints
 
@@ -162,6 +182,12 @@ Atlas (FastAPI / uvicorn, 127.0.0.1:8788)
         ▼
 NVIDIA integrate API (z-ai/glm-5.2 by default)
 ```
+
+The proxy itself is OS-agnostic (paths resolve from `__file__`, no POSIX-only
+syscalls). The **service supervisor** is the only OS-specific layer: systemd
+on Linux, launchd on macOS, a Windows Service on Windows — each wrapping the
+same `<venv-python> -m proxy.atlas_proxy` command. `setup/installer.py`
+detects the host and wires the native backend.
 
 Streaming is real translation, not buffer-then-fake: OpenAI SSE chunks from NVIDIA are converted to Anthropic SSE events on the fly for `/v1/messages`, and usage is accumulated across chunk boundaries so token counts stay accurate even when the upstream splits them.
 
