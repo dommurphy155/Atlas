@@ -83,8 +83,12 @@ DEFAULT_KEYS_FILE = PROJECT_DIR / "data" / "keys.txt"
 
 PROXY_URL = "http://127.0.0.1:8788"
 MIN_KEYS = 6
-CLAUDE_INSTALL_URL = "https://claude.ai/install.sh"
-CLAUDE_INSTALL_PS_URL = "https://claude.ai/install.ps1"
+# Claude Code native installers — three distinct methods, one per Windows shell
+# flavor (Unix covers macOS/Linux/WSL with the .sh). The installer picks the
+# right one for the host; ATLAS_CLAUDE_INSTALLER overrides the auto-choice.
+CLAUDE_INSTALL_URL = "https://claude.ai/install.sh"        # macOS / Linux / WSL
+CLAUDE_INSTALL_PS_URL = "https://claude.ai/install.ps1"     # Windows PowerShell
+CLAUDE_INSTALL_CMD_URL = "https://claude.ai/install.cmd"     # Windows CMD
 
 DEFAULT_ENV = f"""\
 # Atlas — NVIDIA-only proxy environment defaults
@@ -676,8 +680,15 @@ def _wire_env_windows(base_url: str, api_key: str) -> None:
 
 def ensure_claude() -> str | None:
     """Ensure `claude` is on PATH. If missing, install via Anthropic's native
-    installer — curl|bash on Unix, irm|iex via PowerShell on Windows. Returns
-    the resolved claude path or None."""
+    installer, picking the right one for the host:
+
+      - macOS / Linux / WSL  →  curl -fsSL https://claude.ai/install.sh | bash
+      - Windows (PowerShell) →  irm https://claude.ai/install.ps1 | iex
+      - Windows (CMD)        →  curl -fsSL https://claude.ai/install.cmd -o
+                                install.cmd && install.cmd && del install.cmd
+
+    (WSL reports platform.system() as "Linux" and so takes the Unix branch —
+    no special-casing needed.) Returns the resolved claude path or None."""
     console.print(Panel.fit("[bold cyan]Ensuring Claude Code is installed[/]", border_style="cyan"))
 
     claude_path = shutil.which("claude")
@@ -727,24 +738,73 @@ def ensure_claude() -> str | None:
 
 
 def _ensure_claude_windows() -> str | None:
-    """Windows: install claude via `irm https://claude.ai/install.ps1 | iex`
-    through PowerShell. The native installer drops claude into a per-user
-    location; ensure that's on PATH for this process."""
+    """Windows: install claude using the right method for the host's shell.
+
+    Two native Windows installers exist:
+      - PowerShell:  `irm https://claude.ai/install.ps1 | iex`
+      - CMD:         `curl -fsSL https://claude.ai/install.cmd -o install.cmd
+                     && install.cmd && del install.cmd`
+
+    Auto-detection prefers PowerShell (pwsh/powershell) since it's present on
+    every modern Windows box and the .ps1 path is the cleaner of the two. If
+    PowerShell is absent (rare, e.g. a stripped Server Core), fall back to the
+    CMD path via curl. `ATLAS_CLAUDE_INSTALLER=powershell|cmd` forces one.
+
+    (macOS / Linux / WSL never reach here — WSL reports platform.system() as
+    "Linux", so it takes the Unix `curl ... | bash` branch in ensure_claude().)
+    """
+    choice = os.environ.get("ATLAS_CLAUDE_INSTALLER", "").strip().lower()
     ps = shutil.which("pwsh") or shutil.which("powershell")
-    if ps is None:
+    curl = shutil.which("curl")
+
+    if choice == "powershell":
+        method = "powershell"
+    elif choice == "cmd":
+        method = "cmd"
+    elif ps is not None:
+        method = "powershell"  # prefer PowerShell when available
+    elif curl is not None:
+        method = "cmd"         # fall back to the CMD curl path
+    else:
         console.print(
-            "[red]No PowerShell found — cannot install claude automatically.[/red]\n"
-            "Install Claude Code manually, then re-run.")
+            "[red]Neither PowerShell nor curl found — cannot install claude "
+            "automatically.[/red]\nInstall Claude Code manually, then re-run.")
         return None
 
-    try:
-        _run([ps, "-NoProfile", "-Command",
-              f"irm {CLAUDE_INSTALL_PS_URL} | iex"])
-        console.print("[green]Claude Code install script finished.[/green]")
-    except subprocess.CalledProcessError:
-        console.print(
-            "[red]Native installer failed.[/red] Install claude manually, then re-run.")
-        return None
+    if method == "powershell":
+        console.print("[dim]Installing Claude Code via PowerShell (install.ps1)...[/dim]")
+        try:
+            _run([ps, "-NoProfile", "-Command",
+                  f"irm {CLAUDE_INSTALL_PS_URL} | iex"])
+        except subprocess.CalledProcessError:
+            console.print(
+                "[red]PowerShell installer failed.[/red] "
+                "Install claude manually, then re-run.")
+            return None
+    else:  # cmd
+        if curl is None:
+            console.print(
+                "[red]curl not found — cannot run the CMD installer.[/red] "
+                "Install claude manually, then re-run.")
+            return None
+        console.print("[dim]Installing Claude Code via CMD (install.cmd)...[/dim]")
+        # Download install.cmd to a temp file, run it, then delete it — mirrors
+        # the documented one-liner exactly. cwd a temp dir so the .cmd lands
+        # somewhere writable and is cleaned up regardless of outcome.
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="atlas-claude-") as tmp:
+            installer_cmd = str(Path(tmp) / "install.cmd")
+            try:
+                _run([curl, "-fsSL", CLAUDE_INSTALL_CMD_URL, "-o", installer_cmd])
+                _run(["cmd", "/c", installer_cmd])
+            except subprocess.CalledProcessError:
+                console.print(
+                    "[red]CMD installer failed.[/red] "
+                    "Install claude manually, then re-run.")
+                return None
+        # del install.cmd is implicit — the temp dir is removed on exit.
+
+    console.print("[green]Claude Code install script finished.[/green]")
 
     # The Windows installer typically places claude under the user profile.
     # Ensure likely locations are on PATH for this process so shutil.which sees it.
@@ -906,14 +966,19 @@ def launch_claude(claude_path: str | None, stats: dict | None) -> None:
     console.print(summary)
 
     if not claude_path:
-        install_hint = (
-            "curl -fsSL https://claude.ai/install.sh | bash" if IS_UNIX
-            else f"irm {CLAUDE_INSTALL_PS_URL} | iex"
-        )
+        if IS_UNIX:
+            install_hint = "curl -fsSL https://claude.ai/install.sh | bash"
+        else:
+            # Windows — show both shell flavors so the operator can pick.
+            install_hint = (
+                "PowerShell:  irm https://claude.ai/install.ps1 | iex\n"
+                "CMD:         curl -fsSL https://claude.ai/install.cmd -o "
+                "install.cmd && install.cmd && del install.cmd"
+            )
         console.print(
             Panel.fit(
                 "[bold red]claude is not installed.[/bold red]\n"
-                f"Install it with:  [bold]{install_hint}[/bold]\n"
+                f"Install it with:\n[bold]{install_hint}[/bold]\n"
                 "Then run:         [bold]claude[/bold]",
                 border_style="red",
             )

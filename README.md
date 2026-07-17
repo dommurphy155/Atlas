@@ -40,7 +40,7 @@ Atlas is a single-provider NVIDIA proxy. It speaks both **OpenAI** and **Anthrop
 
 ## 🚀 Quick start
 
-**Linux / macOS:**
+**Linux / macOS / WSL:**
 ```bash
 cd ~/claude/atlas && bash setup/install.sh   # venv + deps + service + CLI + .env
 atlas start                                   # fire it up
@@ -52,11 +52,20 @@ atlas status                                  # service + /health + /stats
 cd atlas; powershell -ExecutionPolicy Bypass -File setup\install.ps1
 ```
 
+**Windows (CMD, run as Administrator):**
+```cmd
+cd atlas && powershell -ExecutionPolicy Bypass -File setup\install.ps1
+```
+> The CMD path just invokes the same `install.ps1` via `powershell`; either
+> shell gets you the identical OS-aware install.
+
 The installer auto-detects your OS and runs the native flow — **systemd** on
 Linux, **launchd** on macOS, **Windows Service** on Windows — then wires
 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` into your environment (shell rc on
-Unix, `setx` on Windows) so Claude Code picks it up automatically. See
-[Wire up Claude Code](#-wire-up-claude-code).
+Unix, `setx` on Windows) so Claude Code picks it up automatically. It also
+installs Claude Code itself if missing, picking the right installer for the
+host shell (`curl … | bash` on macOS/Linux/WSL, `irm … | iex` on PowerShell,
+`curl … install.cmd` on CMD). See [Wire up Claude Code](#-wire-up-claude-code).
 
 Drop your NVIDIA keys in `data/keys.txt` (one `nvapi-…` per line) and you're
 live.
