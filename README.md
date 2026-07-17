@@ -5,14 +5,14 @@
 <h1 align="center">Atlas</h1>
 
 <p align="center">
-  <strong>Run Claude Code for free on NVIDIA API keys.</strong><br>
-  A drop-in OpenAI/Anthropic-compatible proxy that routes every request straight to NVIDIA's integrate API — no Anthropic billing, no middleman.
+  <strong>Run any AI coding harness for free on NVIDIA API keys.</strong><br>
+  A drop-in OpenAI/Anthropic-compatible proxy that routes every request straight to NVIDIA's integrate API — no Anthropic/OpenAI billing, no middleman. Works on <strong>any machine</strong> — Linux, macOS, Windows, WSL — and with <strong>any harness</strong> that speaks either SDK.
 </p>
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> ·
   <a href="#-what-it-does">What It Does</a> ·
-  <a href="#-wire-up-claude-code">Claude Code</a> ·
+  <a href="#-wire-up-any-harness">Wire Up Any Harness</a> ·
   <a href="#-cli">CLI</a> ·
   <a href="#-endpoints">Endpoints</a> ·
   <a href="#-configuration">Config</a> ·
@@ -26,7 +26,9 @@
 
 ## ✨ What it does
 
-Atlas is a single-provider NVIDIA proxy. It speaks both **OpenAI** and **Anthropic** wire formats, so anything that targets either SDK — including Claude Code — can point at it and get answers back from an NVIDIA-hosted model. No fallback, no provider switching, no HuggingFace.
+Atlas is a single-provider NVIDIA proxy. It speaks both **OpenAI** and **Anthropic** wire formats, so **any AI harness that targets either SDK** can point at it and get answers back from an NVIDIA-hosted model — Claude Code, Codex, Hermes, OpenClaw, Cline, Aider, Continue, Roo Code, or anything else that lets you set a base URL. No fallback, no provider switching, no HuggingFace.
+
+It also runs on **any machine**: one OS-aware installer auto-detects Linux, macOS, Windows, or WSL and wires the native service backend — systemd, launchd, or a Windows Service — so the same proxy serves identically everywhere.
 
 - **OpenAI-compatible** at `/v1/chat/completions` (stream + non-stream)
 - **Anthropic-compatible** at `/v1/messages` (stream + non-stream, real-time OpenAI→Anthropic SSE translation)
@@ -37,6 +39,7 @@ Atlas is a single-provider NVIDIA proxy. It speaks both **OpenAI** and **Anthrop
 - SSE keepalive comments so reasoning models don't trip middlebox idle timers while they think
 - `/health`, `/stats`, and a `atlas tokens` usage dashboard
 - Runs as a standalone service on `127.0.0.1:8788` — **systemd** on Linux, **launchd** on macOS, **Windows Service** on Windows; one installer auto-detects the host and wires the native backend
+- **Harness-agnostic** — anything that speaks OpenAI or Anthropic works: Claude Code, Codex, Hermes, OpenClaw, and the rest
 
 ## 🚀 Quick start
 
@@ -62,24 +65,45 @@ cd atlas && powershell -ExecutionPolicy Bypass -File setup\install.ps1
 The installer auto-detects your OS and runs the native flow — **systemd** on
 Linux, **launchd** on macOS, **Windows Service** on Windows — then wires
 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` into your environment (shell rc on
-Unix, `setx` on Windows) so Claude Code picks it up automatically. It also
-installs Claude Code itself if missing, picking the right installer for the
-host shell (`curl … | bash` on macOS/Linux/WSL, `irm … | iex` on PowerShell,
-`curl … install.cmd` on CMD). See [Wire up Claude Code](#-wire-up-claude-code).
+Unix, `setx` on Windows) so any Anthropic-flavored harness picks it up
+automatically. It also installs Claude Code itself if missing, picking the
+right installer for the host shell (`curl … | bash` on macOS/Linux/WSL,
+`irm … | iex` on PowerShell, `curl … install.cmd` on CMD). For OpenAI-flavored
+harnesses (Codex, Hermes, OpenClaw, …) see [Wire up any harness](#-wire-up-any-harness).
 
 Drop your NVIDIA keys in `data/keys.txt` (one `nvapi-…` per line) and you're
 live.
 
-## 🔌 Wire up Claude Code
+## 🔌 Wire up any harness
 
-The installer appends this to `~/.bashrc` / `~/.zshrc` (skipped if already present):
+Atlas speaks both OpenAI and Anthropic wire formats, so **any** AI coding harness that lets you point at a custom base URL works out of the box — Claude Code, Codex, Hermes, OpenClaw, Cline, Aider, Continue, Roo Code, or anything else. The installer auto-wires the Anthropic env vars (and installs Claude Code if missing); for OpenAI-flavored harnesses you point them at the same proxy on the OpenAI endpoint.
+
+**Anthropic-flavored harnesses** (Claude Code, etc.) — the installer appends this to `~/.bashrc` / `~/.zshrc` (Unix) or persists it via `setx` (Windows), skipped if already present:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8788
 export ANTHROPIC_API_KEY=atlas
 ```
 
-Source your rc (or open a new shell), launch `claude`, and it now talks to the NVIDIA-backed model through Atlas instead of the Anthropic API. The key value (`atlas`) is a placeholder — the proxy ignores it and uses your `nvapi-` keys upstream.
+Source your rc (or open a new shell), launch your harness, and it now talks to the NVIDIA-backed model through Atlas instead of the Anthropic API. The key value (`atlas`) is a placeholder — the proxy ignores it and uses your `nvapi-` keys upstream.
+
+**OpenAI-flavored harnesses** (Codex, Hermes, OpenClaw, Aider, Continue, etc.) — point them at the OpenAI endpoint with any placeholder key:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8788/v1
+export OPENAI_API_KEY=atlas
+```
+
+| Harness | Wire format | Env vars to set |
+| --- | --- | --- |
+| Claude Code | Anthropic | `ANTHROPIC_BASE_URL=http://127.0.0.1:8788` · `ANTHROPIC_API_KEY=atlas` |
+| Codex | OpenAI | `OPENAI_BASE_URL=http://127.0.0.1:8788/v1` · `OPENAI_API_KEY=atlas` |
+| Hermes | OpenAI | `OPENAI_BASE_URL=http://127.0.0.1:8788/v1` · `OPENAI_API_KEY=atlas` |
+| OpenClaw | OpenAI | `OPENAI_BASE_URL=http://127.0.0.1:8788/v1` · `OPENAI_API_KEY=atlas` |
+| Cline / Roo Code | OpenAI | `OPENAI_BASE_URL=http://127.0.0.1:8788/v1` · `OPENAI_API_KEY=atlas` |
+| Aider | OpenAI | `--openai-api-base http://127.0.0.1:8788/v1` · `OPENAI_API_KEY=atlas` |
+
+The proxy listens on `127.0.0.1:8788` with `/v1/messages` (Anthropic) and `/v1/chat/completions` (OpenAI) — same NVIDIA backend behind both, so it doesn't matter which flavor your harness speaks.
 
 ## 🧱 Repository structure
 
@@ -176,7 +200,7 @@ This is the mechanism that lets you run the backing model with a fixed persona/i
 ## 🏗️ Architecture
 
 ```
-client (Claude Code / OpenAI SDK / Anthropic SDK)
+client (any harness: Claude Code / Codex / Hermes / OpenClaw / Cline / Aider / …)
   │  OpenAI or Anthropic wire format
   ▼
 Atlas (FastAPI / uvicorn, 127.0.0.1:8788)
