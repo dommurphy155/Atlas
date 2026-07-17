@@ -195,6 +195,12 @@ def collect_keys() -> None:
         f"[yellow]Need {need} more key(s) to reach the minimum of {MIN_KEYS}.[/yellow]")
     console.print(
         f"Paste each key on its own line. Enter a blank line or 'done' to finish.")
+    console.print(
+        f"[bold cyan]Where to get NVIDIA API keys:[/bold cyan]\n"
+        f"  Get NVIDIA API keys from [link=https://build.nvidia.com/explore/discover]https://build.nvidia.com/explore/discover[/link]\n"
+        f"  You will need at least {MIN_KEYS} API keys (separate accounts).\n"
+        f"  Use [link=https://www.agentmail.to]https://www.agentmail.to[/link] for throwaway emails.\n"
+        f"  Each key starts with 'nvapi-'.")
 
     if not sys.stdin.isatty():
         console.print(
@@ -555,15 +561,16 @@ def launch_claude(claude_path: str | None, stats: dict | None) -> None:
 def main() -> None:
     console.print(
         Panel.fit(
-            "[bold]Atlas NVIDIA Proxy — installer[/bold]\n"
-            "Standalone NVIDIA-only proxy on port 8788",
+            "[bold magenta]Atlas[/bold magenta] [dim]NVIDIA proxy installer[/dim]\n"
+            "[dim]Port 8788 · NVIDIA-only · Claude Code front-end[/dim]",
             border_style="magenta",
         )
     )
 
-    console.print(f"Project dir: [cyan]{PROJECT_DIR}[/]")
-    console.print(f"Venv:        [cyan]{VENV_DIR}[/]")
-    console.print(f"Python:      [cyan]{PYTHON_BIN}[/]")
+    console.print(f"  [cyan]▸[/cyan] [dim]Project[/dim]   [cyan]{PROJECT_DIR}[/]")
+    console.print(f"  [cyan]▸[/cyan] [dim]Venv[/dim]       [cyan]{VENV_DIR}[/]")
+    console.print(f"  [cyan]▸[/cyan] [dim]Python[/dim]     [cyan]{PYTHON_BIN}[/]")
+    console.print()
 
     steps = [
         ("Configure .env defaults", configure_env_defaults),
@@ -580,6 +587,7 @@ def main() -> None:
     for label, fn in steps:
         console.print()
         result = fn()
+        console.print(f"  [green]✔[/green] [dim]{label}[/dim]")
         # Capture the two return values we need for the final launch.
         if label == "Ensure Claude Code":
             claude_path = result
