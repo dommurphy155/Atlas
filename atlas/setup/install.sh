@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Atlas — bootstrap installer.
+# Atlas — bootstrap installer (Linux / macOS).
 # Creates the venv, pip-installs requirements, then hands off to installer.py.
+# installer.py detects the host OS and runs the native flow for it (systemd on
+# Linux, launchd on macOS); this bootstrap contains no OS-specific install logic
+# of its own. On Windows, run setup/install.ps1 instead — it hands off to the
+# same installer.py for the Windows flow.
 # This is the Atlas NVIDIA-only proxy (port 8788). It does not touch any other
 # project or proxy.
 set -euo pipefail

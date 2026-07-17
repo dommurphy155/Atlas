@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Atlas NVIDIA Proxy — macOS LaunchAgent (TEMPLATE)
+
+  This file is a template. atlas/setup/installer.py substitutes the __VAR__
+  placeholders from PROJECT_DIR + the invoking user's home before writing it
+  to ~/Library/LaunchAgents/com.atlas.proxy.plist. Do not install this file
+  verbatim — the paths below are intentionally unresolved so they work on any
+  machine.
+
+  Service label: com.atlas.proxy
+  Port: 8788 (ATLAS_PROXY_PORT)
+  Model: z-ai/glm-5.2 via NVIDIA integrate API
+
+  A user LaunchAgent (not a system daemon): runs as the invoking user, no sudo
+  required, loads at login, survives reboot. KeepAlive keeps the proxy alive
+  if it exits; the proxy's own resilience loop handles upstream failures.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.atlas.proxy</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__VENV_PYTHON__</string>
+        <string>-m</string>
+        <string>proxy.atlas_proxy</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>__ATLAS_HOME__</string>
+        <key>ATLAS_PROXY_HOST</key>
+        <string>127.0.0.1</string>
+        <key>ATLAS_PROXY_PORT</key>
+        <string>8788</string>
+        <key>ATLAS_NVIDIA_BASE_URL</key>
+        <string>https://integrate.api.nvidia.com/v1/chat/completions</string>
+        <key>ATLAS_NVIDIA_MODEL</key>
+        <string>z-ai/glm-5.2</string>
+        <key>ATLAS_PROXY_RELOAD_SECONDS</key>
+        <string>5</string>
+        <key>ATLAS_PROXY_MAX_KEY_FAILOVERS</key>
+        <string>3</string>
+        <key>ATLAS_PROXY_COOLDOWN_SECONDS</key>
+        <string>60</string>
+        <key>ATLAS_PROXY_REQUEST_TIMEOUT</key>
+        <string>300</string>
+        <key>ATLAS_PROXY_CONNECT_TIMEOUT</key>
+        <string>10</string>
+        <key>ATLAS_PROXY_READ_TIMEOUT</key>
+        <string>180</string>
+        <key>ATLAS_PROXY_KEEPALIVE_SECONDS</key>
+        <string>15</string>
+        <key>ATLAS_PROXY_MAX_RETRIES</key>
+        <string>2</string>
+        <key>ATLAS_PROXY_DEBUG</key>
+        <string>0</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>__ATLAS_HOME__/Library/Logs/atlas-proxy.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__ATLAS_HOME__/Library/Logs/atlas-proxy.log</string>
+</dict>
+</plist>

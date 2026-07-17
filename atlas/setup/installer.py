@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Atlas — Python installer.
+"""Atlas — Python installer (cross-platform).
 
-Runs after install.sh has built the venv and pip-installed requirements.
-Single linear flow: configure .env → collect NVIDIA keys (interactive, min 6)
-→ install + enable + start the systemd unit → symlink the atlas CLI → wire
-ANTHROPIC_* into the shell rc → ensure Claude Code is installed → health-check
-the running proxy → exec claude to drop into the TUI.
+A single installer that detects the host OS and runs the *same* install flow
+with OS-correct mechanisms:
 
-Atlas is the NVIDIA-only proxy on port 8788. It is separate from any other
-proxy project and does not reference them.
+    configure .env → collect NVIDIA keys (interactive, min 6)
+    → install + start the service   (systemd on Linux, launchd on macOS,
+                                     Windows Service on Windows)
+    → install the atlas CLI         (symlink on Unix, atlas.cmd on Windows)
+    → wire ANTHROPIC_*              (shell rc on Unix, setx on Windows)
+    → ensure Claude Code            (curl|bash on Unix, irm|iex on Windows)
+    → health-check the running proxy → launch claude.
+
+The proxy itself (proxy/*.py) is untouched by this layer — it boots with one
+portable command, `<venv-python> -m proxy.atlas_proxy`, which every service
+backend wraps. Atlas is the NVIDIA-only proxy on port 8788.
 """
 import os
 import sys
 import json
 import shutil
 import time
+import platform
 import subprocess
 from pathlib import Path
 
@@ -24,22 +31,60 @@ from rich.table import Table
 
 console = Console()
 
+# ── Platform detection ────────────────────────────────────────────────────
+# One source of truth for every OS branch in this file. platform.system()
+# returns "Linux" / "Darwin" (macOS) / "Windows".
+IS_LINUX = platform.system() == "Linux"
+IS_MACOS = platform.system() == "Darwin"
+IS_WINDOWS = platform.system() == "Windows"
+IS_UNIX = IS_LINUX or IS_MACOS  # POSIX-ish: bash, symlinks, rc files, execvp
+
 # Resolve PROJECT_DIR as the parent of this file's directory.
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 VENV_DIR = PROJECT_DIR / ".venv"
-PYTHON_BIN = VENV_DIR / "bin" / "python"
 
+
+def _venv_bin() -> Path:
+    """The venv's executables directory: `bin` on Unix, `Scripts` on Windows."""
+    return VENV_DIR / ("Scripts" if IS_WINDOWS else "bin")
+
+
+def _venv_python() -> Path:
+    """The venv's python interpreter: `bin/python` on Unix, `Scripts/python.exe`
+    on Windows. All downstream code (service units, CLI invocation, token
+    tracker) routes through this so venv paths are correct on every OS."""
+    return _venv_bin() / ("python.exe" if IS_WINDOWS else "python")
+
+
+PYTHON_BIN = _venv_python()
+
+# Linux systemd unit (template). Only ever installed on Linux.
 UNIT_SRC = PROJECT_DIR / "systemd" / "atlas-proxy.service"
 UNIT_DST = Path("/etc/systemd/system/atlas-proxy.service")
 SERVICE_NAME = "atlas-proxy.service"
+
+# macOS LaunchAgent (template). Only ever installed on macOS.
+PLIST_SRC = PROJECT_DIR / "setup" / "com.atlas.proxy.plist"
+PLIST_LABEL = "com.atlas.proxy"
+
+# Windows Service. Only ever installed on Windows.
+WIN_SERVICE_MODULE = PROJECT_DIR / "setup" / "atlas_windows_service.py"
+WIN_SERVICE_NAME = "AtlasProxy"
+WIN_SERVICE_DISPLAY = "Atlas NVIDIA Proxy"
+
+# CLI source (bash) — stays the Linux/macOS command. Untouched by this layer.
 CLI_SRC = PROJECT_DIR / "bin" / "atlas"
-CLI_DST = Path("/usr/local/bin/atlas")
+CLI_DST = Path("/usr/local/bin/atlas")  # Unix symlink target
+# Windows CLI shim — independent of the bash bin/atlas.
+WIN_CLI_SRC = PROJECT_DIR / "bin" / "atlas.cmd"
+
 ENV_FILE = PROJECT_DIR / ".env"
 DEFAULT_KEYS_FILE = PROJECT_DIR / "data" / "keys.txt"
 
 PROXY_URL = "http://127.0.0.1:8788"
 MIN_KEYS = 6
 CLAUDE_INSTALL_URL = "https://claude.ai/install.sh"
+CLAUDE_INSTALL_PS_URL = "https://claude.ai/install.ps1"
 
 DEFAULT_ENV = f"""\
 # Atlas — NVIDIA-only proxy environment defaults
@@ -68,21 +113,25 @@ def _run(cmd, **kwargs):
 
 
 def _sudo_run(cmd, **kwargs):
-    """Run a command via sudo if we're not root, else directly."""
-    if os.geteuid() != 0:
+    """Run a command via sudo if we're not root, else directly. Linux only —
+    on macOS /usr/local/bin is user-writable and there's no need for sudo in
+    the installer's paths; on Windows sudo doesn't exist. Guarded so this is
+    a safe no-op-prefixed call site on non-root Linux only."""
+    if IS_LINUX and os.geteuid() != 0:
         cmd = ["sudo", *cmd]
     return _run(cmd, **kwargs)
 
 
 def _detect_user() -> tuple[str, str]:
-    """Detect (username, home_dir) for the unit's User= and HOME=.
+    """Detect (username, home_dir) for the systemd unit's User= and HOME=.
 
-    The service should run as the invoking user, not blindly as root. When the
-    installer is run under sudo, the real user is in SUDO_USER; otherwise it's
-    the current euid's name. Home is that user's passwd entry, not $HOME (which
-    under sudo points at /root). Falls back to root if detection fails so the
-    unit still installs rather than crashing — but the common case (a human
-    running `sudo bash install.sh`) resolves to that human's account.
+    Linux only. The service should run as the invoking user, not blindly as
+    root. When the installer is run under sudo, the real user is in SUDO_USER;
+    otherwise it's the current euid's name. Home is that user's passwd entry,
+    not $HOME (which under sudo points at /root). Falls back to root if
+    detection fails so the unit still installs rather than crashing — but the
+    common case (a human running `sudo bash install.sh`) resolves to that
+    human's account.
     """
     import getpass
     import pwd
@@ -104,7 +153,7 @@ def _render_unit(unit_text: str) -> str:
     matter where the repo is checked out or who installed it.
     """
     user, home = _detect_user()
-    venv_bin = str(VENV_DIR / "bin")
+    venv_bin = str(_venv_bin())
     venv_python = str(PYTHON_BIN)
     return (
         unit_text
@@ -113,6 +162,19 @@ def _render_unit(unit_text: str) -> str:
         .replace("__PROJECT_DIR__", str(PROJECT_DIR))
         .replace("__VENV_BIN__", venv_bin)
         .replace("__VENV_PYTHON__", venv_python)
+    )
+
+
+def _render_plist(plist_text: str) -> str:
+    """Substitute __VAR__ placeholders in the macOS LaunchAgent plist template.
+    Same substitution scheme as the systemd unit, minus the User= field (user
+    agents run as the invoking user automatically)."""
+    home = str(Path.home())
+    return (
+        plist_text
+        .replace("__ATLAS_HOME__", home)
+        .replace("__PROJECT_DIR__", str(PROJECT_DIR))
+        .replace("__VENV_PYTHON__", str(PYTHON_BIN))
     )
 
 
@@ -249,14 +311,36 @@ def collect_keys() -> None:
     console.print(f"[green]Wrote {len(merged)} keys to:[/green] {keys_file}")
 
 
-def install_systemd_unit() -> None:
-    """Install atlas-proxy.service, daemon-reload, then enable + start it.
+def install_and_start_service() -> None:
+    """Install + start the proxy service using the host's native mechanism.
 
-    Unlike the prior installer, this enables and starts the unit so the proxy
-    is live (and survives reboot) by the time the installer finishes.
+    Dispatcher: systemd on Linux, launchd on macOS, Windows Service on Windows.
+    Each backend wraps the same portable proxy command —
+    `<venv-python> -m proxy.atlas_proxy` — so the proxy layer is identical
+    across OSes; only the supervisor differs. The service is live (and survives
+    reboot) by the time this step finishes.
+    """
+    if IS_LINUX:
+        _install_systemd_unit()
+    elif IS_MACOS:
+        _install_launchd_agent()
+    elif IS_WINDOWS:
+        _install_windows_service()
+    else:
+        console.print(
+            f"[yellow]Unsupported OS: {platform.system()}.[/yellow]\n"
+            "The proxy still runs via `python -m proxy.atlas_proxy`; install a "
+            "service supervisor manually if you want reboot persistence.")
+
+
+def _install_systemd_unit() -> None:
+    """Linux: install atlas-proxy.service, daemon-reload, then enable + start it.
+
+    Behavior preserved exactly from the pre-cross-platform installer — same
+    template render, same /etc/systemd/system destination, same enable --now.
     """
     console.print(Panel.fit(
-        "[bold cyan]Installing + starting systemd unit[/]", border_style="cyan"))
+        "[bold cyan]Installing + starting systemd unit (Linux)[/]", border_style="cyan"))
 
     if not UNIT_SRC.exists():
         console.print(f"[red]Unit source not found:[/red] {UNIT_SRC}")
@@ -306,10 +390,125 @@ def install_systemd_unit() -> None:
         pass
 
 
+def _install_launchd_agent() -> None:
+    """macOS: render the LaunchAgent plist to ~/Library/LaunchAgents/, load it,
+    and start the proxy. User agent — no sudo needed, survives reboot."""
+    console.print(Panel.fit(
+        "[bold cyan]Installing + starting launchd agent (macOS)[/]", border_style="cyan"))
+
+    if not PLIST_SRC.exists():
+        console.print(f"[red]plist template not found:[/red] {PLIST_SRC}")
+        return
+
+    plist_text = _render_plist(PLIST_SRC.read_text())
+    launch_dir = Path.home() / "Library" / "LaunchAgents"
+    launch_dir.mkdir(parents=True, exist_ok=True)
+    plist_dst = launch_dir / f"{PLIST_LABEL}.plist"
+    plist_dst.write_text(plist_text)
+    console.print(f"[green]Wrote LaunchAgent:[/green] {plist_dst}")
+
+    # Unload if already loaded so we re-bind cleanly to the new plist.
+    subprocess.run(["launchctl", "unload", str(plist_dst)],
+                   capture_output=True, text=True)
+
+    try:
+        _run(["launchctl", "load", "-w", str(plist_dst)])
+        console.print(f"[green]Loaded LaunchAgent:[/green] {PLIST_LABEL}")
+    except subprocess.CalledProcessError:
+        console.print(
+            f"[red]Failed to load LaunchAgent {PLIST_LABEL}.[/red] "
+            "Run `atlas start` manually once keys are present.")
+        return
+
+    try:
+        _run(["launchctl", "start", PLIST_LABEL])
+        console.print(f"[green]Started:[/green] {PLIST_LABEL}")
+    except subprocess.CalledProcessError:
+        console.print(
+            f"[red]Failed to start {PLIST_LABEL}.[/red] "
+            "Run `launchctl start com.atlas.proxy` manually.")
+
+    # Report resulting state.
+    try:
+        out = subprocess.run(
+            ["launchctl", "list", PLIST_LABEL],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        if out:
+            console.print(f"[dim]{out}[/dim]")
+    except Exception:
+        pass
+
+
+def _install_windows_service() -> None:
+    """Windows: pip-install pywin32 into the venv, then register + start the
+    AtlasProxy Windows Service via the atlas_windows_service.py host module.
+    The service host spawns `<venv-python> -m proxy.atlas_proxy` and manages
+    its lifecycle — it never imports or modifies the proxy. Auto-start on boot
+    is set by the service's own startup mode."""
+    console.print(Panel.fit(
+        "[bold cyan]Installing + starting Windows Service (Windows)[/]",
+        border_style="cyan"))
+
+    if not WIN_SERVICE_MODULE.exists():
+        console.print(f"[red]Service host not found:[/red] {WIN_SERVICE_MODULE}")
+        return
+
+    # pywin32 is Windows-only; install it into the venv (not the shared pin
+    # file, so Linux/macOS installs never pull it).
+    console.print("[dim]Installing pywin32 into the venv...[/dim]")
+    pip = _venv_bin() / ("pip.exe" if IS_WINDOWS else "pip")
+    try:
+        _run([str(pip), "install", "pywin32"])
+        console.print("[green]pywin32 installed.[/green]")
+    except subprocess.CalledProcessError:
+        console.print(
+            "[red]Failed to install pywin32 — cannot register the Windows Service.[/red]")
+        return
+
+    # Register the service (idempotent: the host module handles re-install).
+    try:
+        _run([str(PYTHON_BIN), str(WIN_SERVICE_MODULE), "--install"])
+        console.print(f"[green]Registered service:[/green] {WIN_SERVICE_NAME}")
+    except subprocess.CalledProcessError:
+        console.print(
+            f"[red]Failed to register {WIN_SERVICE_NAME}.[/red] "
+            "Run as Administrator, then re-run.")
+        return
+
+    # Start it now. Non-fatal: warn on failure, keep going.
+    try:
+        _run([str(PYTHON_BIN), str(WIN_SERVICE_MODULE), "--start"])
+        console.print(f"[green]Started:[/green] {WIN_SERVICE_NAME}")
+    except subprocess.CalledProcessError:
+        console.print(
+            f"[red]Failed to start {WIN_SERVICE_NAME}.[/red] "
+            "Run `sc start AtlasProxy` manually once keys are present.")
+
+    # Report resulting state.
+    try:
+        state = subprocess.run(
+            ["sc", "query", WIN_SERVICE_NAME],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        if state:
+            console.print(f"[dim]{state}[/dim]")
+    except Exception:
+        pass
+
+
 def install_cli() -> None:
-    """Symlink /usr/local/bin/atlas -> bin/atlas and make it executable."""
+    """Install the `atlas` operator command. Unix: symlink
+    /usr/local/bin/atlas -> bin/atlas (the bash CLI, which stays untouched).
+    Windows: add the venv Scripts dir + bin dir to the user PATH so the
+    atlas.cmd shim resolves. The bash bin/atlas is never modified."""
     console.print(Panel.fit("[bold cyan]Installing atlas CLI[/]", border_style="cyan"))
 
+    if IS_WINDOWS:
+        _install_cli_windows()
+        return
+
+    # Linux/macOS: symlink the bash CLI.
     if not CLI_SRC.exists():
         console.print(f"[red]CLI source not found:[/red] {CLI_SRC}")
         return
@@ -320,23 +519,98 @@ def install_cli() -> None:
     if CLI_DST.is_symlink() or CLI_DST.exists():
         _sudo_run(["rm", "-f", str(CLI_DST)])
 
-    _sudo_run(["ln", "-s", str(CLI_SRC), str(CLI_DST)])
+    # On Linux, /usr/local/bin may need sudo; on macOS it's user-writable on
+    # modern installs, and _sudo_run is a no-op prefix off-Linux-root.
+    if IS_LINUX and os.geteuid() != 0:
+        _sudo_run(["ln", "-s", str(CLI_SRC), str(CLI_DST)])
+    else:
+        try:
+            _run(["ln", "-s", str(CLI_SRC), str(CLI_DST)])
+        except subprocess.CalledProcessError:
+            # Fall back to sudo if the direct symlink hits permissions.
+            _sudo_run(["ln", "-s", str(CLI_SRC), str(CLI_DST)])
     console.print(f"[green]Linked CLI:[/green] {CLI_DST} -> {CLI_SRC}")
 
 
-def wire_claude_env() -> None:
-    """Mandatory: write ANTHROPIC_* exports into the shell rc, strip any stale
-    ANTHROPIC_AUTH_TOKEN, and apply the exports to THIS process so the
-    immediately-launched claude inherits them — no manual source needed.
+def _install_cli_windows() -> None:
+    """Windows: ensure the atlas.cmd shim exists and put the venv Scripts dir
+    + the repo bin dir on the user PATH via setx so `atlas` resolves in new
+    shells. The shim drives the Windows Service via sc.exe and runs the token
+    tracker through the venv python — independent of the bash bin/atlas."""
+    if not WIN_CLI_SRC.exists():
+        console.print(f"[red]Windows CLI shim not found:[/red] {WIN_CLI_SRC}")
+        return
 
-    Writes to ~/.bashrc and ~/.zshrc (whichever exist). If neither exists,
-    creates ~/.bashrc so the block always lands somewhere.
+    # Add venv\Scripts and the repo bin dir to the user PATH (idempotent-ish:
+    # setx writes the whole value, so we read current user PATH first).
+    import winreg  # type: ignore  # Windows-only; only imported here.
+    paths_to_add = [str(_venv_bin()), str(PROJECT_DIR / "bin")]
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ
+        ) as key:
+            current, _ = winreg.QueryValueEx(key, "PATH")
+    except OSError:
+        current = os.environ.get("PATH", "")
+
+    parts = [p for p in current.split(os.pathsep) if p]
+    changed = False
+    for p in paths_to_add:
+        if p not in parts:
+            parts.append(p)
+            changed = True
+    if changed:
+        new_path = os.pathsep.join(parts)
+        # setx truncates at 1024 chars; warn if we'd overflow.
+        if len(new_path) > 1024:
+            console.print(
+                "[yellow]User PATH is near the setx 1024-char limit — "
+                "adding bin dirs anyway, but verify in a new shell.[/yellow]")
+        subprocess.run(["setx", "PATH", new_path], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        console.print(f"[green]Added to user PATH:[/green] "
+                      f"{', '.join(paths_to_add)}")
+    else:
+        console.print("[yellow]CLI dirs already on PATH.[/yellow]")
+
+    # Also apply to this process so the immediately-launched claude sees them.
+    for p in paths_to_add:
+        if p not in os.environ.get("PATH", "").split(os.pathsep):
+            os.environ["PATH"] = p + os.pathsep + os.environ.get("PATH", "")
+    console.print(f"[green]Windows CLI shim available:[/green] {WIN_CLI_SRC.name}")
+
+
+def wire_claude_env() -> None:
+    """Mandatory: write ANTHROPIC_* into the environment so Claude Code talks
+    to the proxy, strip any stale ANTHROPIC_AUTH_TOKEN, and apply the exports
+    to THIS process so the immediately-launched claude inherits them — no
+    manual source needed.
+
+    Unix: write to ~/.bashrc and ~/.zshrc (whichever exist). If neither exists,
+    create ~/.bashrc so the block always lands somewhere.
+    Windows: persist via setx (the user environment), which new shells inherit.
     """
-    console.print(Panel.fit("[bold cyan]Wiring shell env[/]", border_style="cyan"))
+    console.print(Panel.fit("[bold cyan]Wiring env[/]", border_style="cyan"))
 
     base_url = "http://127.0.0.1:8788"
     api_key = "atlas"
 
+    if IS_WINDOWS:
+        _wire_env_windows(base_url, api_key)
+    else:
+        _wire_env_unix(base_url, api_key)
+
+    # Apply to THIS process immediately so the claude we exec next inherits the
+    # exports without the user needing to source their rc / open a new shell.
+    os.environ["ANTHROPIC_BASE_URL"] = base_url
+    os.environ["ANTHROPIC_API_KEY"] = api_key
+    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+    console.print("[green]Exports applied to this process.[/green]")
+    console.print("[dim]Future shells pick them up automatically.[/dim]")
+
+
+def _wire_env_unix(base_url: str, api_key: str) -> None:
+    """Linux/macOS: append the Atlas block to ~/.bashrc and ~/.zshrc."""
     candidates = [Path.home() / ".bashrc", Path.home() / ".zshrc"]
     rc_files = [p for p in candidates if p.exists()]
     if not rc_files:
@@ -383,18 +657,27 @@ def wire_claude_env() -> None:
             console.print(f"[yellow]Already wired in:[/yellow] {rc}")
         rc.write_text(stripped)
 
-    # Apply to THIS process immediately so the claude we exec next inherits the
-    # exports without the user needing to source their rc manually.
-    os.environ["ANTHROPIC_BASE_URL"] = base_url
-    os.environ["ANTHROPIC_API_KEY"] = api_key
-    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
-    console.print("[green]Exports applied to this process.[/green]")
-    console.print("[dim]Future shells pick them up automatically from the rc file.[/dim]")
+
+def _wire_env_windows(base_url: str, api_key: str) -> None:
+    """Windows: persist ANTHROPIC_* into the user environment via setx and
+    clear any stale ANTHROPIC_AUTH_TOKEN. setx is the Windows equivalent of
+    appending to .bashrc — new shells inherit it."""
+    for name, value in (("ANTHROPIC_BASE_URL", base_url),
+                        ("ANTHROPIC_API_KEY", api_key)):
+        subprocess.run(["setx", name, value], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        console.print(f"[green]setx {name}[/green] (persists for new shells)")
+    # Clear a stale AUTH_TOKEN if present.
+    subprocess.run(["reg", "delete", "HKCU\\Environment", "/v",
+                    "ANTHROPIC_AUTH_TOKEN", "/f"], check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    console.print("[green]Windows user env wired.[/green]")
 
 
 def ensure_claude() -> str | None:
     """Ensure `claude` is on PATH. If missing, install via Anthropic's native
-    installer (curl | bash). Returns the resolved claude path or None."""
+    installer — curl|bash on Unix, irm|iex via PowerShell on Windows. Returns
+    the resolved claude path or None."""
     console.print(Panel.fit("[bold cyan]Ensuring Claude Code is installed[/]", border_style="cyan"))
 
     claude_path = shutil.which("claude")
@@ -410,6 +693,11 @@ def ensure_claude() -> str | None:
         return claude_path
 
     console.print("[yellow]claude not on PATH — installing via Anthropic native installer...[/yellow]")
+
+    if IS_WINDOWS:
+        return _ensure_claude_windows()
+
+    # Unix: curl | bash.
     if shutil.which("curl") is None:
         console.print("[red]curl not found — cannot install claude automatically.[/red]")
         return None
@@ -435,6 +723,49 @@ def ensure_claude() -> str | None:
     console.print(
         f"[yellow]claude still not on PATH after install.[/yellow] "
         f"Check {local_bin} and ensure it's on your PATH.")
+    return None
+
+
+def _ensure_claude_windows() -> str | None:
+    """Windows: install claude via `irm https://claude.ai/install.ps1 | iex`
+    through PowerShell. The native installer drops claude into a per-user
+    location; ensure that's on PATH for this process."""
+    ps = shutil.which("pwsh") or shutil.which("powershell")
+    if ps is None:
+        console.print(
+            "[red]No PowerShell found — cannot install claude automatically.[/red]\n"
+            "Install Claude Code manually, then re-run.")
+        return None
+
+    try:
+        _run([ps, "-NoProfile", "-Command",
+              f"irm {CLAUDE_INSTALL_PS_URL} | iex"])
+        console.print("[green]Claude Code install script finished.[/green]")
+    except subprocess.CalledProcessError:
+        console.print(
+            "[red]Native installer failed.[/red] Install claude manually, then re-run.")
+        return None
+
+    # The Windows installer typically places claude under the user profile.
+    # Ensure likely locations are on PATH for this process so shutil.which sees it.
+    profile = Path(os.environ.get("USERPROFILE", str(Path.home())))
+    candidates = [
+        profile / ".local" / "bin",
+        profile / "AppData" / "Local" / "Programs" / "claude",
+        profile / "AppData" / "Roaming" / "npm",
+    ]
+    for c in candidates:
+        if c.exists() and str(c) not in os.environ.get("PATH", "").split(os.pathsep):
+            os.environ["PATH"] = str(c) + os.pathsep + os.environ.get("PATH", "")
+
+    claude_path = shutil.which("claude") or shutil.which("claude.exe")
+    if claude_path:
+        console.print(f"[green]claude now available:[/green] {claude_path}")
+        return claude_path
+
+    console.print(
+        f"[yellow]claude still not on PATH after install.[/yellow] "
+        f"Check {candidates[0]} and ensure it's on your PATH.")
     return None
 
 
@@ -495,8 +826,47 @@ def health_check() -> dict | None:
     return stats
 
 
+def _service_descriptor() -> tuple[str, str]:
+    """Return (label, path) describing the installed service backend for the
+    summary table — systemd unit on Linux, LaunchAgent plist on macOS, Windows
+    Service on Windows."""
+    if IS_MACOS:
+        return ("LaunchAgent", f"~/Library/LaunchAgents/{PLIST_LABEL}.plist")
+    if IS_WINDOWS:
+        return ("Service", WIN_SERVICE_NAME)
+    return ("Unit file", str(UNIT_DST))
+
+
 def _print_service_status() -> None:
-    """Print a short systemctl status excerpt + a hint, non-fatal."""
+    """Print a short service-status excerpt + a hint, non-fatal. Branches on
+    the host's service backend."""
+    if IS_WINDOWS:
+        try:
+            out = subprocess.run(
+                ["sc", "query", WIN_SERVICE_NAME],
+                capture_output=True, text=True, check=False,
+            ).stdout
+            if out:
+                console.print(f"[dim]{out}[/dim]")
+        except Exception:
+            pass
+        console.print("[dim]Inspect logs in the service's log file.[/dim]")
+        return
+
+    if IS_MACOS:
+        try:
+            out = subprocess.run(
+                ["launchctl", "list", PLIST_LABEL],
+                capture_output=True, text=True, check=False,
+            ).stdout
+            if out:
+                console.print(f"[dim]{out}[/dim]")
+        except Exception:
+            pass
+        console.print("[dim]Inspect logs with: tail -f /tmp/atlas-proxy.log[/dim]")
+        return
+
+    # Linux: systemctl.
     if shutil.which("systemctl") is None:
         return
     try:
@@ -511,17 +881,24 @@ def _print_service_status() -> None:
 
 
 def launch_claude(claude_path: str | None, stats: dict | None) -> None:
-    """Print a summary, then exec claude to open the TUI. Per failure policy,
-    warn if anything is off but still launch (if claude exists)."""
+    """Print a summary, then launch claude to open the TUI. Per failure policy,
+    warn if anything is off but still launch (if claude exists). On Unix we
+    execvp into claude (mirrors install.sh's exec handoff); on Windows
+    os.execvp is unreliable for TUI apps, so we subprocess.run and block."""
     total_keys = (stats or {}).get("total_keys", 0)
+
+    svc_label, svc_path = _service_descriptor()
+    cli_label = "CLI" if not IS_WINDOWS else "CLI shim"
+    cli_path = str(WIN_CLI_SRC) if IS_WINDOWS else str(CLI_DST)
 
     summary = Table(title="Atlas install summary", show_header=True, header_style="bold magenta")
     summary.add_column("Field", style="cyan", no_wrap=True)
     summary.add_column("Value", style="green")
-    summary.add_row("Service", SERVICE_NAME)
+    summary.add_row("Service backend", "systemd" if IS_LINUX else
+                                 "launchd" if IS_MACOS else "Windows Service")
+    summary.add_row(svc_label, svc_path)
     summary.add_row("Port", "8788")
-    summary.add_row("Unit file", str(UNIT_DST))
-    summary.add_row("CLI", str(CLI_DST))
+    summary.add_row(cli_label, cli_path)
     summary.add_row("Keys loaded", str(total_keys))
     summary.add_row("Claude", claude_path or "[red]not found[/red]")
     summary.add_row("Project", str(PROJECT_DIR))
@@ -529,10 +906,14 @@ def launch_claude(claude_path: str | None, stats: dict | None) -> None:
     console.print(summary)
 
     if not claude_path:
+        install_hint = (
+            "curl -fsSL https://claude.ai/install.sh | bash" if IS_UNIX
+            else f"irm {CLAUDE_INSTALL_PS_URL} | iex"
+        )
         console.print(
             Panel.fit(
                 "[bold red]claude is not installed.[/bold red]\n"
-                "Install it with:  [bold]curl -fsSL https://claude.ai/install.sh | bash[/bold]\n"
+                f"Install it with:  [bold]{install_hint}[/bold]\n"
                 "Then run:         [bold]claude[/bold]",
                 border_style="red",
             )
@@ -550,11 +931,15 @@ def launch_claude(claude_path: str | None, stats: dict | None) -> None:
         border_style="green"))
 
     # Set ANTHROPIC_* in this process so the first launch talks to the proxy,
-    # even before the user sources their rc file.
+    # even before the user sources their rc file / opens a new shell.
     os.environ["ANTHROPIC_BASE_URL"] = PROXY_URL
     os.environ["ANTHROPIC_API_KEY"] = "atlas"
 
-    # Replace this process with claude (mirrors install.sh's exec handoff).
+    # Launch claude. Unix: replace this process (exec handoff). Windows:
+    # subprocess.run + block — os.execvp is unreliable for console TUIs there.
+    if IS_WINDOWS:
+        subprocess.run([claude_path], check=False)
+        sys.exit(0)
     os.execvp(claude_path, ["claude"])
 
 
@@ -575,9 +960,9 @@ def main() -> None:
     steps = [
         ("Configure .env defaults", configure_env_defaults),
         ("Collect NVIDIA keys", collect_keys),
-        ("Install + start systemd unit", install_systemd_unit),
+        ("Install + start service", install_and_start_service),
         ("Install atlas CLI", install_cli),
-        ("Wire shell ANTHROPIC env", wire_claude_env),
+        ("Wire ANTHROPIC env", wire_claude_env),
         ("Ensure Claude Code", ensure_claude),
         ("Health-check proxy", health_check),
     ]
