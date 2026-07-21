@@ -48,13 +48,33 @@ _IDENTITY_PATTERNS = [
 ]
 
 
+# mtime-checked cache of the override file. The proxy calls _read_override()
+# on every request; without this it did a read_text() syscall each time. We
+# stat the file and only re-read when the mtime moves, so a warm proxy serves
+# the override from memory and picks up edits live (next request after the
+# file changes) — same live-reload behavior as the key store.
+_override_cache: str | None = None
+_override_mtime: float | None = None
+
+
 def _read_override() -> str | None:
-    """Read the override file. Returns None if empty or missing."""
+    """Read the override file, cached by mtime. Returns None if empty/missing."""
+    global _override_cache, _override_mtime
+    try:
+        mtime = OVERRIDE_PATH.stat().st_mtime
+    except FileNotFoundError:
+        _override_cache = None
+        _override_mtime = None
+        return None
+    if mtime == _override_mtime:
+        return _override_cache
     try:
         text = OVERRIDE_PATH.read_text(encoding="utf-8").strip()
-        return text if text else None
-    except FileNotFoundError:
-        return None
+    except OSError:
+        return _override_cache
+    _override_cache = text if text else None
+    _override_mtime = mtime
+    return _override_cache
 
 
 def _strip_system_junk(content: str) -> str:
