@@ -32,7 +32,10 @@ ${C_BOLD}Commands:${C_RESET}
   restart   Restart the atlas-proxy systemd service
   status    Show service status + proxy /health and /stats
   logs      Follow the atlas-proxy journal, pretty-printed (Ctrl-C to exit)
-            Strips host/unit prefix, ANSI, provider/failovers; renames token fields.
+            Strips host/unit prefix, ANSI, provider/failovers; recolors
+            status (200 green/4xx orange/5xx red), total (<30s green/
+            30-120s orange/>120s red), tokens (fixed cyan). Raw logs stay
+            plain text — colour is viewer-side only.
             Pass extra journalctl flags for a one-shot query:
               atlas logs -n 100            last 100 lines
               atlas logs --since '10 min ago'
@@ -113,18 +116,36 @@ do_status() {
 }
 
 # Pretty-printer for atlas logs. Reads journalctl -o json on stdin, emits one
-# clean line per record:
-#   Jul 21 02:22:58 <b386326f status=200 model=glm-5.2 key=#1(…0ENg) tools=0 in=29124 out=159 Total tokens=29283 28.6s
-# Strips: the systemd host/unit prefix (via -o json), the proxy's own leading
-# HH:MM:SS timestamp (redundant with journalctl's date), ANSI color codes,
-# "provider=nvidia", and "failovers=N". Renames in_tokens->in, out_tokens->out,
-# Total=N -> Total tokens=N. Pass `--raw` to bypass and get vanilla journalctl.
+# clean line per record. Strips the systemd host/unit prefix, the proxy's own
+# leading HH:MM:SS timestamp, ANSI codes, and "provider=nvidia", then recolors
+# three fields (TTY-aware) per the operator's palette:
+#   status  — 200 green, 4xx orange, 5xx red
+#   total   — green <30s, orange 30–120s, red >120s
+#   tokens  — fixed cyan, never changes
+# Raw log files stay plain text; colour lives only here in the viewer.
 #
 # NB: the script MUST run via `python3 -c` (not a heredoc) so the journalctl
 # pipe stays on stdin — a `<<'PY'` heredoc steals fd 0 for the script and the
 # piped data never reaches it.
 _atlas_log_filter() {
   python3 -c 'import sys,json,datetime,re
+RESET="\033[0m"
+GREEN="\033[32m"; ORANGE="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
+color = sys.stdout.isatty()
+def paint(c,s): return f"{c}{s}{RESET}" if color else s
+def status_color(s):
+    try: n=int(s)
+    except ValueError: return ""
+    if n==200: return GREEN
+    if 400<=n<500: return ORANGE
+    if n>=500: return RED
+    return ""
+def total_color(v):
+    try: f=float(v)
+    except ValueError: return ""
+    if f<30: return GREEN
+    if f<=120: return ORANGE
+    return RED
 for line in sys.stdin:
     line=line.strip()
     if not line: continue
@@ -141,7 +162,18 @@ for line in sys.stdin:
     m=m.replace(" provider=nvidia","")
     m=re.sub(r" failovers=\d+","",m)
     m=m.replace(" in_tokens="," in=").replace(" out_tokens="," out=")
-    m=re.sub(r" Total=(\d+)",r" Total tokens=\1",m)
+    # Recolor the three target fields. Operate on the cleaned (ANSI-stripped)
+    # string so a re-pipe through the viewer stays stable.
+    def c_status(mm):
+        c=status_color(mm.group(1))
+        return f"status={paint(c,mm.group(1))}" if c else mm.group(0)
+    m=re.sub(r"status=(\d+)",c_status,m)
+    def c_total(mm):
+        c=total_color(mm.group(1))
+        return f"total={paint(c,mm.group(1))}s" if c else mm.group(0)
+    m=re.sub(r"total=([0-9.]+)s",c_total,m)
+    def c_tokens(mm): return f"tokens={paint(CYAN,mm.group(1))}"
+    m=re.sub(r"tokens=([0-9?]+)",c_tokens,m)
     print(f"{ts} {m}" if ts else m,flush=True)'
 }
 
