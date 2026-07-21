@@ -46,11 +46,13 @@ class NvidiaClient:
         # means repeated requests reuse the TLS session instead of paying the
         # handshake every time — the main "feels slow" fix. HTTP/2 multiplexes
         # concurrent requests over one connection and compresses headers; NVIDIA
-        # supports it, so we negotiate it.
+        # supports it, so we negotiate it. 5-minute keepalive expiry so the pool
+        # survives a coffee break — idle gaps between turns no longer cost a
+        # cold TLS handshake (~0.4s) on the next request.
         limits = httpx.Limits(
             max_connections=100,
             max_keepalive_connections=20,
-            keepalive_expiry=30.0,
+            keepalive_expiry=300.0,
         )
         # Non-stream: flat total timeout, fast-fail, free the key.
         self._client = httpx.AsyncClient(
@@ -95,12 +97,21 @@ class NvidiaClient:
 
         await asyncio.gather(_try(self._client), _try(self._stream_client))
 
-    async def chat(self, api_key: str, payload: dict[str, Any]) -> NvidiaResponse:
+    async def chat(self, api_key: str, payload: dict[str, Any], timings: dict[str, float] | None = None) -> NvidiaResponse:
+        import time as _t
+        _t_send = _t.monotonic()
         response = await self._client.post(
             self.chat_url,
             headers=self._headers(api_key),
             json=payload,
         )
+        if timings is not None:
+            # Non-stream: no streaming chunks, so upstream = send->first byte is
+            # really send->full response; ttft = total (first "token" is the
+            # whole body), stream = 0. The handler computes ttft/total from the
+            # request-start stamp it owns; we only own send->response here.
+            timings["upstream"] = max(0.0, _t.monotonic() - _t_send)
+            timings.setdefault("stream", 0.0)
         return self._response_from_httpx(response)
 
     async def stream_chat(
@@ -109,7 +120,19 @@ class NvidiaClient:
         payload: dict[str, Any],
         rid: str = "",
         on_timeout: Callable[[], None] | None = None,
+        timings: dict[str, float] | None = None,
     ) -> tuple[int, httpx.Headers, AsyncIterator[bytes], str]:
+        """Streaming chat. If ``timings`` is a dict, it is populated with
+        ``upstream`` (send->first byte), ``ttft`` (request start->first byte)
+        and ``stream`` (first byte->last byte) in seconds, for the proxy's log
+        line. The handler seeds ``__started`` (request-received monotonic) into
+        ``timings`` so ttft can span queue+preprocess+upstream. Monotonic clock."""
+        import time as _t
+        _t_send = _t.monotonic()
+        if timings is not None:
+            timings.setdefault("upstream", 0.0)
+            timings.setdefault("stream", 0.0)
+            timings.setdefault("ttft", 0.0)
         """Open a streaming chat request.
 
         Returns ``(status, headers, iterator, error_message)``. ``error_message``
@@ -155,9 +178,22 @@ class NvidiaClient:
             return response.status_code, response.headers, _error_iterator(error_text), message
 
         async def iterator() -> AsyncIterator[bytes]:
+            _first = None
             try:
                 async for chunk in response.aiter_bytes():
                     if chunk:
+                        if _first is None:
+                            _first = _t.monotonic()
+                            if timings is not None:
+                                timings["upstream"] = max(0.0, _first - _t_send)
+                                # ttft = request start -> first token. Spans
+                                # queue + preprocess + upstream. __started is
+                                # seeded by the handler (request-received stamp).
+                                _started = timings.get("__started")
+                                if _started is not None:
+                                    timings["ttft"] = max(0.0, _first - _started)
+                        if timings is not None:
+                            timings["stream"] = max(0.0, _t.monotonic() - _first)
                         yield chunk
             except httpx.TimeoutException as exc:
                 # Mid-stream timeout (idle gap exceeded). Emit a terminal

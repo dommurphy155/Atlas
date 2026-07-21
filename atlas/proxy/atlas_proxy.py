@@ -258,6 +258,89 @@ def _extract_usage(json_data: dict[str, Any]) -> tuple[int, int, int, int]:
     return pt, ct, tt, tc
 
 
+# ── Response log line ────────────────────────────────────────────────
+#
+# One shape for every response log, so log parsers (and the `atlas logs`
+# viewer) see a stable field order regardless of endpoint or stream flavour:
+#
+#   <rid status=N model=… key=… tools=N in=N out=N tokens=N
+#       upstream=Xs ttft=Xs stream=Xs total=Xs
+#
+# Rules (see the operator's spec):
+# - tokens replaces the old Total= field, moves up next to out=.
+# - token counts print "?" when unavailable (error / no usage chunk).
+# - missing timings print 0.0s, never omitted.
+# - queue & preprocess were always 0.00s (key acquire + payload build are
+#   sub-millisecond on a loopback proxy), so they're dropped from the line.
+#   The timings dict still tracks them internally; they just never earned
+#   their column.
+# - raw logs stay plain text — no ANSI here. Colour is the viewer's job.
+# Field order is fixed: status model key tools in out tokens upstream
+# ttft stream total.
+
+def _fmt_tok(n: int, available: bool) -> str:
+    return str(n) if available else "?"
+
+
+def _fmt_timing(timings: dict[str, float] | None, key: str, decimals: int) -> str:
+    """Pull a timing from the dict, defaulting to 0.0 so the field is never
+    omitted. Two decimals for the sub-second phases (queue/preprocess), one
+    for the rest."""
+    v = 0.0
+    if timings is not None:
+        v = float(timings.get(key) or 0.0)
+    return f"{max(0.0, v):.{decimals}f}s"
+
+
+def _format_response_line(
+    rid: str,
+    status: int,
+    model: str,
+    key_id: str,
+    tools: int,
+    in_tokens: int,
+    out_tokens: int,
+    total_tokens: int,
+    timings: dict[str, float] | None,
+    started: float,
+    usage_known: bool = True,
+) -> str:
+    """Build the single-line response log string.
+
+    ``total`` is always computed here from ``started`` (request-received → now)
+    so it's authoritative even if a timing capture point was missed. The other
+    three printed phases come from ``timings`` (upstream/ttft/stream); queue
+    and preprocess are tracked but not printed (always ~0 on loopback).
+    """
+    now = time.monotonic()
+    total = max(0.0, now - started) if started else 0.0
+    # Merge total into the timings dict so downstream (JSON extra fields,
+    # viewer) sees the same value the line prints.
+    if timings is None:
+        timings = {}
+    timings["total"] = total
+
+    in_s = _fmt_tok(in_tokens, usage_known)
+    out_s = _fmt_tok(out_tokens, usage_known)
+    tok_s = _fmt_tok(total_tokens, usage_known)
+
+    return (
+        f"<{rid} status={status} model={_short_model(model)} key={key_id} "
+        f"tools={tools} in={in_s} out={out_s} tokens={tok_s} "
+        f"upstream={_fmt_timing(timings, 'upstream', 1)} "
+        f"ttft={_fmt_timing(timings, 'ttft', 1)} "
+        f"stream={_fmt_timing(timings, 'stream', 1)} "
+        f"total={total:.1f}s"
+    )
+
+
+def _new_timings(started: float) -> dict[str, float]:
+    """Seed a timings dict with the request-received stamp so ttft can span
+    queue+preprocess+upstream. The client reads ``__started``."""
+    return {"__started": started, "queue": 0.0, "preprocess": 0.0,
+            "upstream": 0.0, "ttft": 0.0, "stream": 0.0}
+
+
 async def parse_request_body(
     request: Request,
     endpoint: str = "openai",
@@ -416,17 +499,19 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
             return response
         except Exception:
             active_requests -= 1
-            elapsed = time.monotonic() - started
-            logger.info("<%s status=500 provider=nvidia %.1fs", rid, elapsed)
+            timings = _new_timings(started)
+            line = _format_response_line(rid, 500, model, "?", 0, 0, 0, 0, timings, started, False)
+            logger.info(line)
             record_failure("nvidia")
             raise
 
     active_requests += 1
     try:
         result = await handle_non_stream(model, upstream_payload, rid, started)
-        elapsed = time.monotonic() - started
         if result.status_code >= 400:
-            logger.info("<%s status=%d provider=nvidia model=%s %.1fs", rid, result.status_code, _short_model(model), elapsed)
+            timings = _new_timings(started)
+            line = _format_response_line(rid, result.status_code, model, "?", 0, 0, 0, 0, timings, started, False)
+            logger.info(line)
         return result
     finally:
         active_requests -= 1
@@ -537,15 +622,21 @@ async def handle_non_stream(
     server_retries = 0
 
     while True:
+        # Fresh timings per attempt (see _stream_failover_loop for the rationale).
+        timings = _new_timings(started)
+        _acq_start = time.monotonic()
         acquired = await key_store.acquire()
+        timings["queue"] = max(0.0, _acq_start - started) if started else 0.0
         if not acquired:
             record_failure("nvidia")
             return json_error("no usable NVIDIA keys are available", "no_usable_keys", 503)
         api_key, key_idx = acquired
         key_id = key_fingerprint(api_key, key_idx)
 
+        # preprocess = key acquired → upstream request sent.
+        timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
-            response = await nvidia_client.chat(api_key, payload)
+            response = await nvidia_client.chat(api_key, payload, timings=timings)
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
@@ -569,13 +660,18 @@ async def handle_non_stream(
         if response.status_code < 400 and response.json_data is not None:
             pt, ct, tt, tc = _extract_usage(response.json_data)
             record_success("nvidia", model, pt, ct, tt, tc)
-            elapsed = time.monotonic() - started if started else 0
+            # Non-stream: no streamed chunks, so ttft = total (first "token" is
+            # the whole body) and stream = 0. The client already set upstream
+            # (send→response) and stream=0; mirror upstream into ttft so the
+            # line shows a sane ttft instead of 0.0 for buffered responses.
+            timings["ttft"] = timings.get("upstream", 0.0)
+            line = _format_response_line(rid, response.status_code, model, key_id,
+                                         tc, pt, ct, tt, timings, started, True)
             _log_event(
-                logging.INFO, rid, "response",
-                f"<{rid} status={response.status_code} provider=nvidia model={_short_model(model)} key={key_id} tools={tc} in_tokens={pt} out_tokens={ct} Total={tt} {elapsed:.1f}s",
+                logging.INFO, rid, "response", line,
                 status=response.status_code, model=model, key=key_id,
                 tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
-                elapsed_ms=round(elapsed * 1000),
+                elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
             return JSONResponse(openai_response_from_router(model, response.json_data))
 
@@ -658,9 +754,11 @@ async def _stream_failover_loop(
 ) -> StreamingResponse:
     """Shared key-failover/retry loop for both streaming handlers.
 
-    ``wrap_success(api_key, key_id, status, headers, iterator, rid, started)``
-    builds the StreamingResponse for a healthy (<400) upstream — the caller
-    chooses the SSE adapter (OpenAI passthrough vs OpenAI→Anthropic translation).
+    ``wrap_success(api_key, key_id, status, headers, iterator, rid, started,
+    timings)`` builds the StreamingResponse for a healthy (<400) upstream — the
+    caller chooses the SSE adapter (OpenAI passthrough vs OpenAI→Anthropic
+    translation). ``timings`` is the per-attempt dict the loop seeded and the
+    client populated; the success wrapper hands it to the response log line.
 
     ``wrap_error(model, message, status)`` builds the StreamingResponse for a
     terminal failure — the caller chooses the error shape (OpenAI vs Anthropic).
@@ -669,11 +767,24 @@ async def _stream_failover_loop(
     COOLDOWN_SECONDS and the next eligible key is tried. 5xx retries up to
     MAX_RETRIES on the same pool; any other 4xx surfaces the real upstream
     message so the client sees "upstream returned 400: Validation: ...".
+
+    Timings: ``queue`` spans request-received → key acquired (request starts
+    processing); ``preprocess`` spans acquire → upstream request sent. The
+    client then fills ``upstream`` (send→first byte), ``ttft`` (request start→
+    first byte) and ``stream`` (first→last byte). ``total`` is computed at log
+    time. A fresh dict per attempt so a failover retry doesn't carry the dead
+    key's queue/preprocess into the winner's line.
     """
     server_retries = 0
+    _acquired_at = 0.0  # request-received stamp for queue, set each attempt
 
     while True:
+        # Fresh timings per attempt. __started seeds ttft (request-received →
+        # first token spans queue+preprocess+upstream).
+        timings = _new_timings(started)
+        _acq_start = time.monotonic()
         acquired = await key_store.acquire()
+        timings["queue"] = max(0.0, _acq_start - started) if started else 0.0
         if not acquired:
             record_failure("nvidia")
             return wrap_error(model, "no usable NVIDIA keys are available", 503)
@@ -692,9 +803,12 @@ async def _stream_failover_loop(
                 key=key_id, reason="midstream_timeout",
             )
 
+        # preprocess = key acquired → upstream request sent. Stamp it now;
+        # the client's _t_send is the send instant (≈ immediately after).
+        timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
             status, headers, iterator, error_message = await nvidia_client.stream_chat(
-                api_key, payload, rid=rid, on_timeout=_on_timeout
+                api_key, payload, rid=rid, on_timeout=_on_timeout, timings=timings,
             )
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
@@ -718,7 +832,7 @@ async def _stream_failover_loop(
             return wrap_success(
                 api_key=api_key, key_id=key_id, status=status,
                 headers=headers, iterator=iterator,
-                rid=rid, started=started,
+                rid=rid, started=started, timings=timings,
             )
 
         # Rate-limited / quota / auth / key-rejected — cool and rotate.
@@ -771,12 +885,14 @@ async def handle_stream(
 ) -> StreamingResponse | JSONResponse:
     """OpenAI-shaped streaming: NVIDIA SSE passed through (usage extracted for stats)."""
     # The success wrapper needs `model` in scope for stream_router_sse's stats
-    # logging; close over it via a partial-style closure.
-    def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started):
+    # logging; close over it via a partial-style closure. timings flows through
+    # so stream_router_sse can stamp ttft/stream (the client filled upstream)
+    # and build the response log line.
+    def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
         return StreamingResponse(
             stream_with_active_count(
                 keepalive(
-                    stream_router_sse(iterator, model, rid, "nvidia", started, key_id),
+                    stream_router_sse(iterator, model, rid, "nvidia", started, key_id, timings),
                     KEEPALIVE_SECONDS,
                 )
             ),
@@ -825,16 +941,17 @@ async def handle_anthropic_stream(
     is wrapped in openai_sse_to_anthropic_sse() and errors are Anthropic-shaped.
     """
 
-    def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started):
+    def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
         def _on_done(pt: int, ct: int, tt: int, tc: int) -> None:
             record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
-            elapsed = time.monotonic() - started if started else 0
+            usage_known = bool(pt or ct or tt)
+            line = _format_response_line(rid, 200, NVIDIA_MODEL, key_id, tc,
+                                         pt, ct, tt, timings, started, usage_known)
             _log_event(
-                logging.INFO, rid, "response",
-                f"<{rid} status=200 provider=nvidia model={_short_model(NVIDIA_MODEL)} key={key_id} tools={tc} in_tokens={pt} out_tokens={ct} Total={tt} {elapsed:.1f}s",
+                logging.INFO, rid, "response", line,
                 status=200, model=NVIDIA_MODEL, key=key_id,
                 tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
-                elapsed_ms=round(elapsed * 1000),
+                elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
 
         return StreamingResponse(
@@ -868,6 +985,7 @@ async def stream_router_sse(
     provider: str,
     started: float,
     key_id: str = "",
+    timings: dict[str, float] | None = None,
 ) -> AsyncIterator[bytes]:
     """Stream SSE chunks, capturing usage across chunk boundaries, then log.
 
@@ -878,11 +996,19 @@ async def stream_router_sse(
     A cheap byte-substring check gates the parse, so a long stream does a
     handful of parses instead of one per token. Tool-call counts stay accurate
     because every tool_call-bearing chunk is still parsed.
+
+    ``timings`` is the per-attempt dict the failover loop seeded and the client
+    populated (upstream/ttft on first byte). We measure ``stream`` here at the
+    forwarding layer (first forwarded chunk → last) since this is the last byte
+    the client sees, then hand the dict to ``_format_response_line``.
     """
     pt = ct = tt = tc = 0
     saw_usage = False
     buffer = b""
+    _first_fwd = 0.0
     async for chunk in iterator:
+        if _first_fwd == 0.0:
+            _first_fwd = time.monotonic()
         buffer += chunk
         # Process every complete line in the buffer; keep the trailing partial.
         while b"\n" in buffer:
@@ -926,25 +1052,25 @@ async def stream_router_sse(
                         tc += 1
         yield chunk
 
-    elapsed = time.monotonic() - started
+    # stream = first forwarded chunk → last forwarded chunk. Falls back to 0.0
+    # if the upstream never sent a byte (kept the field present, never omitted).
+    if timings is not None and _first_fwd > 0.0:
+        timings["stream"] = max(0.0, time.monotonic() - _first_fwd)
+
+    line = _format_response_line(rid, 200, model, key_id, tc, pt, ct, tt, timings, started, saw_usage)
     if saw_usage:
         record_success(provider, model, pt, ct, tt, tc)
-        _log_event(
-            logging.INFO, rid, "response",
-            f"<{rid} status=200 provider=nvidia model={_short_model(model)} key={key_id} tools={tc} in_tokens={pt} out_tokens={ct} Total={tt} {elapsed:.1f}s",
-            status=200, model=model, key=key_id,
-            tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
-            elapsed_ms=round(elapsed * 1000),
-        )
+        _log_event(logging.INFO, rid, "response", line,
+                   status=200, model=model, key=key_id,
+                   tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
+                   elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0)
     else:
         record_success(provider, model, 0, 0, 0, 0)
-        _log_event(
-            logging.INFO, rid, "response",
-            f"<{rid} status=200 provider=nvidia model={_short_model(model)} key={key_id} tools={tc} in_tokens=? out_tokens=? {elapsed:.1f}s",
-            status=200, model=model, key=key_id,
-            tool_calls=tc, elapsed_ms=round(elapsed * 1000),
-            usage_unknown=True,
-        )
+        _log_event(logging.INFO, rid, "response", line,
+                   status=200, model=model, key=key_id,
+                   tool_calls=tc,
+                   elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
+                   usage_unknown=True)
 
 
 async def stream_with_active_count(iterator: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
