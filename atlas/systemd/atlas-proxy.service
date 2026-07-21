@@ -30,7 +30,6 @@ Environment=ATLAS_PROXY_PORT=8788
 Environment=ATLAS_NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
 Environment=ATLAS_NVIDIA_MODEL=z-ai/glm-5.2
 Environment=ATLAS_PROXY_RELOAD_SECONDS=5
-Environment=ATLAS_PROXY_MAX_KEY_FAILOVERS=3
 Environment=ATLAS_PROXY_COOLDOWN_SECONDS=60
 Environment=ATLAS_PROXY_REQUEST_TIMEOUT=300
 Environment=ATLAS_PROXY_CONNECT_TIMEOUT=10

@@ -128,22 +128,17 @@ class NvidiaKeyStore:
             # key and make it the new sticky active key. Start the scan at the
             # active index (or 0 if none) so we resume the forward rotation in
             # place rather than jumping back to the top of the list.
-            start = self._active_index if self._active_index >= 0 else 0
+            start = (self._active_index + 1) % n if self._active_index >= 0 else 0
             for offset in range(n):
                 idx = (start + offset) % n
                 if self._is_eligible(idx, now):
                     self._active_index = idx
                     return self._keys[idx], idx
 
-            # Every key is on cooldown. Fall back to the active key (or the
-            # next one if unset) anyway — a cooling key is still a better bet
-            # than a hard 503, and its cooldown may have nearly elapsed.
-            if self._active_index >= 0:
-                idx = self._active_index
-            else:
-                idx = 0
-                self._active_index = 0
-            return self._keys[idx], idx
+            # Every key is cooling down. Never reuse a blacklisted key.
+            # Returning a cooled key defeats the purpose of the cooldown and
+            # creates a 429 retry loop.
+            return None
 
     async def cooldown_key(self, key: str) -> None:
         """Blacklist a key for COOLDOWN_SECONDS.
