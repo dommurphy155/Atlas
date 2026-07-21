@@ -35,7 +35,16 @@ from proxy.openai_compat import (
 from proxy.stats import record_failure, record_success, get_status as stats_status, reset_since_restart
 from proxy.system_prompt import replace_system_prompt
 
-MAX_BODY_BYTES = 2 * 1024 * 1024
+# Request body cap. This is a loopback-only proxy — the only "client" is
+# Claude Code on 127.0.0.1 — so there is no abuse vector; the cap exists purely
+# as an OOM backstop against a genuinely runaway sender. The previous 2 MiB
+# limit was the cause of the "Internal Error at ~135k context" bug: Claude Code
+# legitimately sends >2 MiB once a long conversation accumulates tool_result
+# file dumps and dense code (GLM-5.2's window is 1M tokens ≈ 4-6 MiB
+# serialized). 256 MiB is ~5x a maxed-out 1M-token request: generous headroom,
+# still bounded. Anything NVIDIA itself rejects comes back as a real upstream
+# 413 that the handlers already surface.
+MAX_BODY_BYTES = 256 * 1024 * 1024
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
@@ -62,7 +71,7 @@ READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "180"))
 # timers instead of killing a healthy-but-quiet stream.
 KEEPALIVE_SECONDS = float(os.getenv("ATLAS_PROXY_KEEPALIVE_SECONDS", "15"))
 MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
-MAX_KEY_FAILOVERS = int(os.getenv("ATLAS_PROXY_MAX_KEY_FAILOVERS", "3"))
+MAX_KEY_FAILOVERS = None
 # Per-key cooldown (seconds). When a key dies upstream (quota/429/5xx), it is
 # blacklisted for this long before the pool hands it out again. After it
 # elapses the key auto-recovers — acquire() simply stops skipping it. 60s
@@ -183,6 +192,22 @@ def json_error(message: str, code: str, status: int) -> JSONResponse:
     return JSONResponse(openai_error(message, code, status), status_code=status)
 
 
+def anthropic_json_error(message: str, status: int) -> JSONResponse:
+    """Anthropic-shaped error for the /v1/messages endpoint.
+
+    Claude Code speaks the Anthropic API, which expects
+    ``{"type":"error","error":{"type":"...","message":"..."}}``. Returning the
+    OpenAI shape (``{"error":{...}}``) on /v1/messages made the SDK throw a
+    generic APIStatusError that Claude Code rendered as a bare "Internal Error"
+    — masking the real cause (e.g. a 413 request-too-large). Shape it properly
+    so the actual message reaches the client.
+    """
+    return JSONResponse(
+        {"type": "error", "error": {"type": "api_error", "message": message}},
+        status_code=status,
+    )
+
+
 def _generate_rid() -> str:
     """Generate a short request ID for tracing."""
     return uuid.uuid4().hex[:8]
@@ -225,26 +250,57 @@ def _extract_usage(json_data: dict[str, Any]) -> tuple[int, int, int, int]:
     return pt, ct, tt, tc
 
 
-async def parse_request_body(request: Request) -> dict[str, Any] | JSONResponse:
+async def parse_request_body(
+    request: Request,
+    endpoint: str = "openai",
+) -> dict[str, Any] | JSONResponse:
+    """Read + validate the request body, enforcing MAX_BODY_BYTES.
+
+    ``endpoint`` is ``"openai"`` for /v1/chat/completions or ``"anthropic"``
+    for /v1/messages; it selects the error shape so each client gets an error
+    it can actually parse (OpenAI clients get the OpenAI shape, Claude Code gets
+    the Anthropic shape — otherwise the SDK throws a generic APIStatusError and
+    Claude Code renders it as a bare "Internal Error", hiding the real cause).
+
+    Every rejection is logged at WARNING with the byte size and a rid, so a
+    body-size / parse failure is never silent again (the previous version
+    returned before any request log line ran, which is why the 413 at large
+    context showed up as "Internal Error" with a clean journal).
+    """
+    rid = _generate_rid()
+    body_len = 0
+
+    def _shape(message: str, status: int) -> JSONResponse:
+        _log_event(
+            logging.WARNING, rid, "reject",
+            f"<{rid} {endpoint} reject status={status} size={body_len}: {message}",
+            endpoint=endpoint, status=status, size=body_len, reason=message,
+        )
+        if endpoint == "anthropic":
+            return anthropic_json_error(message, status)
+        return json_error(message, "bad_request" if status == 400 else "request_too_large", status)
+
     size = request.headers.get("content-length")
     if size:
         try:
-            if int(size) > MAX_BODY_BYTES:
-                return json_error("request body too large", "request_too_large", 413)
+            body_len = int(size)
+            if body_len > MAX_BODY_BYTES:
+                return _shape("request body too large", 413)
         except ValueError:
-            return json_error("invalid content-length", "bad_request", 400)
+            return _shape("invalid content-length", 400)
 
     raw = await request.body()
-    if len(raw) > MAX_BODY_BYTES:
-        return json_error("request body too large", "request_too_large", 413)
+    body_len = len(raw)
+    if body_len > MAX_BODY_BYTES:
+        return _shape("request body too large", 413)
 
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return json_error("bad json", "bad_json", 400)
+        return _shape("bad json", 400)
 
     if not isinstance(payload, dict):
-        return json_error("json body must be an object", "bad_json", 400)
+        return _shape("json body must be an object", 400)
     return payload
 
 
@@ -306,7 +362,7 @@ async def models() -> dict[str, Any]:
 @app.post("/v1/chat/completions", response_model=None)
 async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
     global active_requests
-    body = await parse_request_body(request)
+    body = await parse_request_body(request, endpoint="openai")
     if isinstance(body, JSONResponse):
         return body
 
@@ -371,7 +427,7 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
 @app.post("/v1/messages", response_model=None)
 async def anthropic_messages(request: Request) -> JSONResponse | StreamingResponse:
     global active_requests
-    body = await parse_request_body(request)
+    body = await parse_request_body(request, endpoint="anthropic")
     if isinstance(body, JSONResponse):
         return body
 
@@ -473,8 +529,8 @@ async def handle_non_stream(
     key_failovers = 0
     server_retries = 0
 
-    for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
-        if key_failovers >= MAX_KEY_FAILOVERS:
+    while True:
+        if False:
             record_failure("nvidia")
             _log_event(
                 logging.WARNING, rid, "failover_limit",
@@ -593,8 +649,8 @@ async def handle_stream(
     key_failovers = 0
     server_retries = 0
 
-    for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
-        if key_failovers >= MAX_KEY_FAILOVERS:
+    while True:
+        if False:
             record_failure("nvidia")
             _log_event(
                 logging.WARNING, rid, "failover_limit",
@@ -756,8 +812,8 @@ async def handle_anthropic_stream(
             failovers=failovers, elapsed_ms=round(elapsed * 1000),
         )
 
-    for _ in range(max(1, MAX_KEY_FAILOVERS + MAX_RETRIES + 1)):
-        if key_failovers >= MAX_KEY_FAILOVERS:
+    while True:
+        if False:
             record_failure("nvidia")
             _log_event(
                 logging.WARNING, rid, "failover_limit",

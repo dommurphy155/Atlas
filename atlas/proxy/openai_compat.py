@@ -376,6 +376,15 @@ def sanitize_openai_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             out["tool_choice"] = "auto"
 
+    # stream_options: when streaming, ask the upstream to emit a usage chunk on
+    # the final event. Without this, NVIDIA's GLM endpoint never sends usage on
+    # the stream path, so the proxy's _on_done / stats always see in_tokens=0
+    # out_tokens=0 (the "in_tokens=0 on streams" cosmetic bug). include_usage is
+    # standard OpenAI and harmless on non-streaming requests, but we only set it
+    # when actually streaming to keep the payload minimal.
+    if out.get("stream"):
+        out["stream_options"] = {"include_usage": True}
+
     return out
 
 

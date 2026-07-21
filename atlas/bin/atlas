@@ -31,11 +31,13 @@ ${C_BOLD}Commands:${C_RESET}
   stop      Stop the atlas-proxy systemd service
   restart   Restart the atlas-proxy systemd service
   status    Show service status + proxy /health and /stats
-  logs      Follow the atlas-proxy journal (Ctrl-C to exit)
+  logs      Follow the atlas-proxy journal, pretty-printed (Ctrl-C to exit)
+            Strips host/unit prefix, ANSI, provider/failovers; renames token fields.
             Pass extra journalctl flags for a one-shot query:
               atlas logs -n 100            last 100 lines
               atlas logs --since '10 min ago'
-              atlas logs -o json | jq .    structured (with ATLAS_PROXY_LOG_FORMAT=json)
+              atlas logs --raw             vanilla journalctl (no transform)
+              atlas logs -o json | jq .    structured (raw passthrough)
   tokens    Clean token/usage summary since last restart
   -h, --help, (none)   Show this help
 
@@ -110,16 +112,73 @@ do_status() {
   echo
 }
 
+# Pretty-printer for atlas logs. Reads journalctl -o json on stdin, emits one
+# clean line per record:
+#   Jul 21 02:22:58 <b386326f status=200 model=glm-5.2 key=#1(…0ENg) tools=0 in=29124 out=159 Total tokens=29283 28.6s
+# Strips: the systemd host/unit prefix (via -o json), the proxy's own leading
+# HH:MM:SS timestamp (redundant with journalctl's date), ANSI color codes,
+# "provider=nvidia", and "failovers=N". Renames in_tokens->in, out_tokens->out,
+# Total=N -> Total tokens=N. Pass `--raw` to bypass and get vanilla journalctl.
+#
+# NB: the script MUST run via `python3 -c` (not a heredoc) so the journalctl
+# pipe stays on stdin — a `<<'PY'` heredoc steals fd 0 for the script and the
+# piped data never reaches it.
+_atlas_log_filter() {
+  python3 -c 'import sys,json,datetime,re
+for line in sys.stdin:
+    line=line.strip()
+    if not line: continue
+    try: e=json.loads(line)
+    except json.JSONDecodeError: print(line,flush=True); continue
+    raw_ts=e.get("__REALTIME_TIMESTAMP",0)
+    try: ts=datetime.datetime.fromtimestamp(int(raw_ts)/1e6).strftime("%b %d %H:%M:%S")
+    except (TypeError,ValueError,OSError): ts=""
+    m=e.get("MESSAGE","")
+    if isinstance(m,list): m=bytes(m).decode("utf-8","replace")
+    m=str(m)
+    m=re.sub(r"\x1b\[[0-9;]*m","",m)
+    m=re.sub(r"^\d{2}:\d{2}:\d{2}\s+","",m)
+    m=m.replace(" provider=nvidia","")
+    m=re.sub(r" failovers=\d+","",m)
+    m=m.replace(" in_tokens="," in=").replace(" out_tokens="," out=")
+    m=re.sub(r" Total=(\d+)",r" Total tokens=\1",m)
+    print(f"{ts} {m}" if ts else m,flush=True)'
+}
+
 do_logs() {
   require_systemctl || return 1
-  # If extra args are passed, forward them to journalctl instead of tailing.
-  # e.g. `atlas logs -n 100`, `atlas logs --since "10 min ago"`, `atlas logs -o json`.
-  if [[ $# -gt 0 ]]; then
-    info "atlas: journalctl $ATLAS_SERVICE $*"
-    exec journalctl -u "$ATLAS_SERVICE" --no-pager "$@"
+
+  # --raw: vanilla journalctl, no transform (for debugging the filter itself).
+  local raw=0
+  local -a jargs=()
+  for a in "$@"; do
+    if [[ "$a" == "--raw" ]]; then raw=1; else jargs+=("$a"); fi
+  done
+
+  # Structured consumers asking for -o json/-o cat explicitly get raw passthrough
+  # so `atlas logs -o json | jq .` still works.
+  local want_raw=$raw
+  for a in "${jargs[@]}"; do
+    [[ "$a" == "-o"* || "$a" == "--output="* ]] && want_raw=1
+  done
+
+  if (( want_raw )); then
+    if [[ ${#jargs[@]} -gt 0 ]]; then
+      exec journalctl -u "$ATLAS_SERVICE" --no-pager "${jargs[@]}"
+    fi
+    exec journalctl -u "$ATLAS_SERVICE" -f --no-pager
   fi
+
+  # One-shot query (extra args like -n 100 / --since '10 min ago'): pretty-print.
+  if [[ ${#jargs[@]} -gt 0 ]]; then
+    info "atlas: journalctl $ATLAS_SERVICE ${jargs[*]}"
+    journalctl -u "$ATLAS_SERVICE" --no-pager -o json "${jargs[@]}" | _atlas_log_filter
+    return
+  fi
+
+  # Default: follow live, pretty-printed.
   info "atlas: following journal for $ATLAS_SERVICE (Ctrl-C to exit)"
-  exec journalctl -u "$ATLAS_SERVICE" -f --no-pager
+  journalctl -u "$ATLAS_SERVICE" -f --no-pager -o json | _atlas_log_filter
 }
 
 do_tokens() {
