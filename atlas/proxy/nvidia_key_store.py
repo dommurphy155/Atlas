@@ -172,7 +172,7 @@ def fingerprint(key: str, index: int | None = None) -> str:
     last-4 fingerprint gives a stable identity that survives a keys.txt
     reorder. The full key is never logged.
     """
-    tail = key[-4:] if len(key) >= 4 else key
+    tail = key[-6:] if len(key) >= 6 else key
     if index is not None:
         return f"#{index}(…{tail})"
     return f"…{tail}"
