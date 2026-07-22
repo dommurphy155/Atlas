@@ -42,6 +42,15 @@ ${C_BOLD}Commands:${C_RESET}
               atlas logs --raw             vanilla journalctl (no transform)
               atlas logs -o json | jq .    structured (raw passthrough)
   tokens    Clean token/usage summary since last restart
+  tests     Run the pytest regression suite (no root needed)
+            Verbose + colored by default: one line per test, green PASSED /
+            red FAILED, so you see exactly what ran and what broke.
+            Extra args pass through to pytest:
+              atlas tests                            whole suite, verbose
+              atlas tests -q                         quiet (dots)
+              atlas tests tests/test_key_store.py    one file
+              atlas tests -k cooldown                by keyword
+              atlas tests --tb=long                  full tracebacks
   -h, --help, (none)   Show this help
 
 ${C_BOLD}Environment:${C_RESET}
@@ -229,6 +238,100 @@ do_tokens() {
   (cd "$proj_dir" && ./.venv/bin/python -m proxy.token_tracker)
 }
 
+# Recolorizer for `atlas tests`. Reads pytest -v on stdin, paints each test
+# line by outcome so a wall of green lets a red failure jump out, and bolds the
+# final summary line. Tracebacks, warnings, and the "=====" separators pass
+# through untouched so failures stay readable. TTY-aware: no color when piped.
+#
+# NB: run via `python3 -c` (not a heredoc) so the pytest pipe stays on stdin —
+# a `<<'PY'` heredoc steals fd 0 and the data never reaches the script.
+_atlas_test_color() {
+  python3 -c 'import sys,re
+RESET="\033[0m"; BOLD="\033[1m"
+GREEN="\033[32m"; RED="\033[31m"; CYAN="\033[36m"; YELLOW="\033[33m"
+DIM="\033[2m"
+color = sys.stdout.isatty()
+# pytest -v lines look like:
+#   tests/test_x.py::TestClass::test_name PASSED [ 12%]
+# outcome is the token before the [ pct ] bracket.
+outcome_re = re.compile(r"^(.*?::\S+)\s+(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASSED)\s*(\[.*\])?\s*$")
+summary_re = re.compile(r"^(=+\s)?(\d+) passed(?:.*?(\d+) failed)?(?:.*?(\d+) error)?(?:.*?(\d+) skipped)?", re.IGNORECASE)
+def paint(c,s): return f"{c}{s}{RESET}" if color else s
+for line in sys.stdin:
+    rstrip = line.rstrip("\n")
+    m = outcome_re.match(rstrip)
+    if m:
+        nodeid, outcome, pct = m.group(1), m.group(2), m.group(3) or ""
+        if outcome in ("PASSED","XPASSED"): oc = paint(GREEN,outcome)
+        elif outcome in ("FAILED","ERROR"): oc = paint(RED,outcome)
+        elif outcome == "SKIPPED": oc = paint(CYAN,outcome)
+        else: oc = paint(YELLOW,outcome)
+        pct_s = paint(DIM,pct) if pct else ""
+        print(f"{paint(DIM,nodeid)} {oc} {pct_s}".rstrip(), flush=True)
+        continue
+    sm = summary_re.match(rstrip)
+    # Only color the standalone "N passed..." final summary, not the header line.
+    if sm and rstrip and not rstrip.startswith("=") and "passed" in rstrip:
+        parts = []
+        if sm.group(2): parts.append(paint(GREEN,f"{sm.group(2)} passed"))
+        if sm.group(3): parts.append(paint(RED,f"{sm.group(3)} failed"))
+        if sm.group(4): parts.append(paint(RED,f"{sm.group(4)} error"))
+        if sm.group(5): parts.append(paint(CYAN,f"{sm.group(5)} skipped"))
+        # Rebuild: leading "========" (if any) stays, then our colored counts,
+        # then any trailing "in X.Ys" / warnings note.
+        tail = rstrip[sm.end():]
+        print(paint(BOLD, " ".join(parts) + tail), flush=True)
+        continue
+    print(rstrip, flush=True)'
+}
+
+do_tests() {
+  # Run the pytest regression suite through the project venv. Resolves the
+  # project dir from the CLI symlink (same trick as do_tokens) so `atlas tests`
+  # works from any cwd, and the `proxy.*` imports in tests/conftest.py resolve
+  # on sys.path. No root required — it's a pure local test run, not a service
+  # action. Output is verbose by default: one line per test with its node id
+  # and a colored PASSED/FAILED so you can see exactly what ran and what broke.
+  # Extra args pass straight through to pytest:
+  #   atlas tests                            whole suite, verbose + colored
+  #   atlas tests -q                         quiet (dots) — override the default
+  #   atlas tests tests/test_key_store.py    one file
+  #   atlas tests -k cooldown                by keyword
+  #   atlas tests --tb=long                  full tracebacks
+  local cli_self proj_dir
+  cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
+  proj_dir="$(dirname "$(dirname "$cli_self")")"
+  if [[ ! -x "$proj_dir/.venv/bin/pytest" ]]; then
+    err "atlas venv/pytest not found at $proj_dir/.venv (re-run setup/install.sh)"
+    return 1
+  fi
+  info "atlas: running test suite in $proj_dir"
+
+  # If the caller passed their own verbosity flag, respect it and skip the
+  # colorizer (they asked for raw pytest output). Otherwise default to -v
+  # --tb=short and pipe through the recolorizer for a glanceable pass/fail wall.
+  local user_verbose=0
+  local -a pyargs=("$@")
+  for a in "${pyargs[@]}"; do
+    [[ "$a" == -q || "$a" == --quiet || "$a" == -v || "$a" == --verbose || "$a" == --no-header ]] && user_verbose=1
+  done
+
+  local rc=0
+  if (( user_verbose )); then
+    # Caller controls output — hand args straight to pytest, no colorizer.
+    (cd "$proj_dir" && ./.venv/bin/pytest "${pyargs[@]}") || rc=$?
+  else
+    (cd "$proj_dir" && ./.venv/bin/pytest -v --tb=short "${pyargs[@]}") | _atlas_test_color || rc=${PIPESTATUS[0]}
+  fi
+  echo
+  if [[ $rc -eq 0 ]]; then
+    ok "atlas: tests passed"
+  else
+    err "atlas: tests failed (exit $rc)"
+  fi
+  return $rc
+}
+
 main() {
     local cmd="${1:-}"
     shift || true
@@ -240,6 +343,7 @@ main() {
         status)  do_status ;;
         logs)    do_logs "$@" ;;
         tokens)  do_tokens ;;
+        tests)   do_tests "$@" ;;
         -h|--help|"") usage ;;
         *)
             err "unknown command: $cmd"

@@ -364,7 +364,9 @@ def sanitize_openai_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(stop, str) and stop:
         out["stop"] = [stop]
     elif isinstance(stop, list) and stop:
-        out["stop"] = [s for s in stop if isinstance(s, str) and s]
+        filtered = [s for s in stop if isinstance(s, str) and s]
+        if filtered:
+            out["stop"] = filtered
 
     # tools / tool_choice: passthrough (already OpenAI-shaped upstream of this).
     tools = payload.get("tools")
@@ -439,7 +441,7 @@ def openai_response_to_anthropic(model: str, payload: dict[str, Any]) -> dict[st
         content_blocks.append({"type": "text", "text": extract_router_content(payload)})
 
     finish_reason = choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None
-    stop_reason = "tool_use" if finish_reason == "tool_calls" or any(block["type"] == "tool_use" for block in content_blocks) else "end_turn"
+    stop_reason = _anthropic_stop_reason(finish_reason)
     response = anthropic_response_from_blocks(model, content_blocks, stop_reason)
     usage = payload.get("usage") or {}
     response["usage"] = {

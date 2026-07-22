@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# atlas - operator CLI for the Atlas NVIDIA proxy
+# Controls atlas-proxy.service (systemd) on http://127.0.0.1:8788
+set -euo pipefail
+
+ATLAS_PROXY_URL="${ATLAS_PROXY_URL:-http://127.0.0.1:8788}"
+ATLAS_SERVICE="${ATLAS_SERVICE:-atlas-proxy.service}"
+
+# --- color setup (TTY-aware) ---
+if [[ -t 1 ]]; then
+  C_GREEN=$'\033[32m'; C_CYAN=$'\033[36m'; C_YELLOW=$'\033[33m'
+  C_RED=$'\033[31m'; C_BOLD=$'\033[1m'; C_RESET=$'\033[0m'
+else
+  C_GREEN=""; C_CYAN=""; C_YELLOW=""; C_RED=""; C_BOLD=""; C_RESET=""
+fi
+
+err()  { printf '%s%s%s\n' "$C_RED" "$*" "$C_RESET" >&2; }
+info() { printf '%s%s%s\n' "$C_CYAN" "$*" "$C_RESET"; }
+ok()   { printf '%s%s%s\n' "$C_GREEN" "$*" "$C_RESET"; }
+warn() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
+
+usage() {
+  cat <<EOF
+${C_BOLD}atlas${C_RESET} - operator CLI for the Atlas NVIDIA proxy
+
+${C_BOLD}Usage:${C_RESET}
+  atlas <command>
+
+${C_BOLD}Commands:${C_RESET}
+  start     Start the atlas-proxy systemd service
+  stop      Stop the atlas-proxy systemd service
+  restart   Restart the atlas-proxy systemd service
+  status    Show service status + proxy /health and /stats
+  logs      Follow the atlas-proxy journal, pretty-printed (Ctrl-C to exit)
+            Strips host/unit prefix, ANSI, provider/failovers; renames token fields.
+            Pass extra journalctl flags for a one-shot query:
+              atlas logs -n 100            last 100 lines
+              atlas logs --since '10 min ago'
+              atlas logs --raw             vanilla journalctl (no transform)
+              atlas logs -o json | jq .    structured (raw passthrough)
+  tokens    Clean token/usage summary since last restart
+  -h, --help, (none)   Show this help
+
+${C_BOLD}Environment:${C_RESET}
+  ATLAS_PROXY_URL   Proxy base URL (default: http://127.0.0.1:8788)
+  ATLAS_SERVICE      systemd unit name (default: atlas-proxy.service)
+EOF
+}
+
+require_root() {
+  if [[ $EUID -ne 0 ]]; then
+    err "must run as root (try: sudo atlas $1)"
+    return 1
+  fi
+}
+
+require_systemctl() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    err "systemctl not found - systemd not available on this host"
+    return 1
+  fi
+}
+
+do_service() {
+  local action="$1"
+  require_systemctl || return 1
+  require_root "$action" || return 1
+  info "atlas: $action $ATLAS_SERVICE"
+  if systemctl "$action" "$ATLAS_SERVICE"; then
+    ok "atlas: $action done"
+  else
+    err "atlas: $action failed"
+    return 1
+  fi
+}
+
+# pretty-print JSON via python3 if available, else raw
+pprint_json() {
+  local body="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$body" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$body"
+  else
+    printf '%s\n' "$body"
+  fi
+}
+
+# curl an endpoint, print a section header + pretty body; silent on connection failure
+probe() {
+  local label="$1" path="$2"
+  printf '\n%s--- %s %s%s\n' "$C_BOLD" "$label" "$ATLAS_PROXY_URL$path" "$C_RESET"
+  local body
+  if body=$(curl -sS --max-time 3 -m 3 "${ATLAS_PROXY_URL}${path}" 2>/dev/null); then
+    if [[ -z "$body" ]]; then
+      warn "empty response from $path"
+    else
+      pprint_json "$body"
+    fi
+  else
+    warn "proxy not responding on $path"
+  fi
+}
+
+do_status() {
+  require_systemctl || return 1
+
+  info "atlas: systemctl status $ATLAS_SERVICE"
+  # non-fatal: service may be stopped, systemctl status returns non-zero then
+  systemctl status "$ATLAS_SERVICE" 2>&1 || warn "(service not active or not found)"
+
+  probe "health" "/health"
+  probe "stats"  "/stats"
+  echo
+}
+
+# Pretty-printer for atlas logs. Reads journalctl -o json on stdin, emits one
+# clean line per record:
+#   Jul 21 02:22:58 <b386326f status=200 model=glm-5.2 key=#1(…0ENg) tools=0 in=29124 out=159 Total tokens=29283 28.6s
+# Strips: the systemd host/unit prefix (via -o json), the proxy's own leading
+# HH:MM:SS timestamp (redundant with journalctl's date), ANSI color codes,
+# "provider=nvidia", and "failovers=N". Renames in_tokens->in, out_tokens->out,
+# Total=N -> Total tokens=N. Pass `--raw` to bypass and get vanilla journalctl.
+#
+# NB: the script MUST run via `python3 -c` (not a heredoc) so the journalctl
+# pipe stays on stdin — a `<<'PY'` heredoc steals fd 0 for the script and the
+# piped data never reaches it.
+_atlas_log_filter() {
+  python3 -c 'import sys,json,datetime,re
+for line in sys.stdin:
+    line=line.strip()
+    if not line: continue
+    try: e=json.loads(line)
+    except json.JSONDecodeError: print(line,flush=True); continue
+    raw_ts=e.get("__REALTIME_TIMESTAMP",0)
+    try: ts=datetime.datetime.fromtimestamp(int(raw_ts)/1e6).strftime("%b %d %H:%M:%S")
+    except (TypeError,ValueError,OSError): ts=""
+    m=e.get("MESSAGE","")
+    if isinstance(m,list): m=bytes(m).decode("utf-8","replace")
+    m=str(m)
+    m=re.sub(r"\x1b\[[0-9;]*m","",m)
+    m=re.sub(r"^\d{2}:\d{2}:\d{2}\s+","",m)
+    m=m.replace(" provider=nvidia","")
+    m=re.sub(r" failovers=\d+","",m)
+    m=m.replace(" in_tokens="," in=").replace(" out_tokens="," out=")
+    m=re.sub(r" Total=(\d+)",r" Total tokens=\1",m)
+    print(f"{ts} {m}" if ts else m,flush=True)'
+}
+
+do_logs() {
+  require_systemctl || return 1
+
+  # --raw: vanilla journalctl, no transform (for debugging the filter itself).
+  local raw=0
+  local -a jargs=()
+  for a in "$@"; do
+    if [[ "$a" == "--raw" ]]; then raw=1; else jargs+=("$a"); fi
+  done
+
+  # Structured consumers asking for -o json/-o cat explicitly get raw passthrough
+  # so `atlas logs -o json | jq .` still works.
+  local want_raw=$raw
+  for a in "${jargs[@]}"; do
+    [[ "$a" == "-o"* || "$a" == "--output="* ]] && want_raw=1
+  done
+
+  if (( want_raw )); then
+    if [[ ${#jargs[@]} -gt 0 ]]; then
+      exec journalctl -u "$ATLAS_SERVICE" --no-pager "${jargs[@]}"
+    fi
+    exec journalctl -u "$ATLAS_SERVICE" -f --no-pager
+  fi
+
+  # One-shot query (extra args like -n 100 / --since '10 min ago'): pretty-print.
+  if [[ ${#jargs[@]} -gt 0 ]]; then
+    info "atlas: journalctl $ATLAS_SERVICE ${jargs[*]}"
+    journalctl -u "$ATLAS_SERVICE" --no-pager -o json "${jargs[@]}" | _atlas_log_filter
+    return
+  fi
+
+  # Default: follow live, pretty-printed.
+  info "atlas: following journal for $ATLAS_SERVICE (Ctrl-C to exit)"
+  journalctl -u "$ATLAS_SERVICE" -f --no-pager -o json | _atlas_log_filter
+}
+
+do_tokens() {
+  # Resolve the atlas project dir from the CLI symlink so this works regardless
+  # of cwd. The symlink at /usr/local/bin/atlas -> .../atlas/bin/atlas resolves
+  # to the real script, and two dirname's climb to the project root. No hardcoded
+  # fallback — if the venv isn't there, say so instead of guessing a wrong path.
+  local cli_self proj_dir
+  cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
+  proj_dir="$(dirname "$(dirname "$cli_self")")"
+  if [[ ! -x "$proj_dir/.venv/bin/python" ]]; then
+    err "atlas venv not found at $proj_dir/.venv (re-run setup/install.sh)"
+    return 1
+  fi
+  # Run from the project dir so `proxy.token_tracker` resolves on sys.path.
+  (cd "$proj_dir" && ./.venv/bin/python -m proxy.token_tracker)
+}
+
+main() {
+    local cmd="${1:-}"
+    shift || true
+
+    case "$cmd" in
+        start)   do_service start ;;
+        stop)    do_service stop ;;
+        restart) do_service restart ;;
+        status)  do_status ;;
+        logs)    do_logs "$@" ;;
+        tokens)  do_tokens ;;
+        -h|--help|"") usage ;;
+        *)
+            err "unknown command: $cmd"
+            echo
+            usage
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

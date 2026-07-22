@@ -197,5 +197,5 @@ def _parse_iso(iso: str) -> float:
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
         return dt.timestamp()
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, AttributeError):
         return 0.0

@@ -163,7 +163,7 @@ def _last_user_index(messages: list) -> int | None:
     return None
 
 
-def _inject_end_reinforcement(messages: list, override: str, provider: str) -> None:
+def _inject_end_reinforcement(messages: list, override: str, provider: str, original_len: int = -1) -> None:
     """Insert a compact reinforcing system message before the final user turn.
 
     GLM-5.2 weights recent messages most heavily. A multi-turn request puts the
@@ -178,8 +178,17 @@ def _inject_end_reinforcement(messages: list, override: str, provider: str) -> N
     the conversation — a single-turn request already has the override adjacent
     to the user turn via the top system slot, so reinforcement is redundant and
     would just double the prompt tokens.
+
+    ``original_len`` is the message count *before* the override insert inflated
+    the list. The raw ``len(messages)`` guard alone is fooled: a single-turn
+    OpenAI request with no system message gets the override inserted at index 0
+    (len 1 → 2), and a guard on the post-insert length would then wrongly inject
+    a redundant reminder. Pass the pre-insert count so the guard reflects the
+    real conversation shape.
     """
-    if len(messages) < 2:
+    if original_len < 0:
+        original_len = len(messages)
+    if original_len < 2:
         return
     idx = _last_user_index(messages)
     if idx is None or idx == 0:
@@ -252,6 +261,10 @@ def replace_system_prompt(body: dict, provider: str = "openai") -> dict:
     # ── OpenAI: replace/insert a role:system message ────────────────────
     # On the Anthropic path there is no role:system message (the system prompt
     # lives in body["system"], handled above), so this loop is a no-op there.
+    # Capture the pre-insert message count first — _inject_end_reinforcement
+    # needs the real conversation length to skip single-turn requests, and the
+    # override insert below would inflate len() and fool its guard.
+    original_len = len(messages)
     system_found = False
     for msg in messages:
         if isinstance(msg, dict) and msg.get("role") == "system":
@@ -272,6 +285,6 @@ def replace_system_prompt(body: dict, provider: str = "openai") -> dict:
     # system reminder immediately before the final user turn restores recency
     # primacy to the override — this is the single highest-leverage change for
     # multi-turn adherence.
-    _inject_end_reinforcement(messages, override, provider)
+    _inject_end_reinforcement(messages, override, provider, original_len=original_len)
 
     return body
