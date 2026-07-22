@@ -125,7 +125,7 @@ async def test_anthropic_stream_tool_use_translates(keys_file, monkeypatch):
 
     async def upstream() -> AsyncIterator[bytes]:
         yield b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"search","arguments":"{\\"q\\":"}}]}}]}\n\n'
-        yield b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"x\"}"}}]}}]}\n\n'
+        yield b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"x\\"}"}}}]}}]}\n\n'
         yield b'data: {"choices":[{"finish_reason":"tool_calls"}]}\n\n'
         yield b"data: [DONE]\n\n"
 

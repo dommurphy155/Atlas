@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from proxy.nvidia_key_store import NvidiaKeyStore, fingerprint as key_fingerprint
 from proxy.nvidia_client import NvidiaClient
 from proxy.openai_compat import (
+    anthropic_error,
     anthropic_openai_payload,
     anthropic_response_from_blocks,
     anthropic_sse_from_response,
@@ -31,6 +32,11 @@ from proxy.openai_compat import (
     openai_sse_to_anthropic_sse,
     sanitize_openai_payload,
     sse_from_text,
+)
+from proxy.anthropic_adapter import (
+    anthropic_to_internal,
+    convert_openai_stream_to_anthropic,
+    generate_anthropic_sse,
 )
 from proxy.stats import record_failure, record_success, get_status as stats_status, reset_since_restart
 from proxy.system_prompt import replace_system_prompt
@@ -77,6 +83,9 @@ MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
 # matches a typical NVIDIA rate-limit window.
 COOLDOWN_SECONDS = float(os.getenv("ATLAS_PROXY_COOLDOWN_SECONDS", "60"))
 DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
+# Enable the new Anthropic adapter with improved fidelity. Set to "0" to use legacy
+# conversion path for backward compatibility if issues arise.
+USE_NEW_ANTHROPIC_ADAPTER = os.getenv("ATLAS_PROXY_NEW_ANTHROPIC", "1") == "1"
 # Log output shape. "pretty" (default) = the colored one-liner. "json" = one
 # JSON object per record, for piping to jq or shipping to an aggregator.
 LOG_FORMAT = os.getenv("ATLAS_PROXY_LOG_FORMAT", "pretty").lower()
@@ -429,6 +438,7 @@ async def stats() -> dict[str, Any]:
         "nvidia_keys_cooling_down": nvidia_stats["cooling_down"],
         "active_requests": active_requests,
         "proxy": proxy_stats,
+        "anthropic_adapter": "new" if USE_NEW_ANTHROPIC_ADAPTER else "legacy",
     }
 
 
@@ -954,12 +964,20 @@ async def handle_anthropic_stream(
                 elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
 
+        # Use new adapter if enabled
+        if USE_NEW_ANTHROPIC_ADAPTER:
+            sse_iterator = convert_openai_stream_to_anthropic(
+                iterator, requested_model, on_done=_on_done,
+            )
+        else:
+            sse_iterator = openai_sse_to_anthropic_sse(
+                iterator, requested_model, on_done=_on_done,
+            )
+
         return StreamingResponse(
             stream_with_active_count(
                 keepalive(
-                    openai_sse_to_anthropic_sse(
-                        iterator, requested_model, on_done=_on_done,
-                    ),
+                    sse_iterator,
                     KEEPALIVE_SECONDS,
                 )
             ),

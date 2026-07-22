@@ -1,0 +1,108 @@
+READ INFO 1 BEFORE READING THIS;
+Ollama’s Anthropic (Claude) compatibility is implemented natively and deeply integrated, unlike a pure protocol translation layer. It avoids unnecessary lossy conversions by mapping directly to Ollama’s internal api.ChatRequest / LLM runtime.
+1. Where the Anthropic API endpoint is implemented
+Route registration (from grep):
+	•	server/routes.go:1922: r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(...), middleware.AnthropicMessagesMiddleware(), s.ChatHandler)...)
+Key files:
+	•	middleware/anthropic.go — Main handler/middleware for /v1/messages. Handles parsing, validation, streaming SSE, tool loops, web search integration, etc.
+	•	anthropic/anthropic.go — Core structs (MessagesRequest, MessagesResponse, ContentBlock, etc.) + FromMessagesRequest() converter.
+	•	anthropic/anthropic_test.go — Extensive tests for parsing, streaming events, tool_use/tool_result, thinking blocks, etc.
+	•	middleware/anthropic_test.go — Tests the middleware + SSE events.
+Request structs (in anthropic/anthropic.go):
+	•	MessagesRequest (standard Anthropic: model, messages[], system, tools[], max_tokens, stream, etc.)
+	•	Supports input_schema on tools.
+Response structs:
+	•	MessagesResponse, various events (MessageStartEvent, ContentBlockStartEvent, ContentBlockDeltaEvent, MessageDeltaEvent, MessageStopEvent).
+	•	Custom blocks: server_tool_use, web_search_tool_result (for internal Ollama features like web search).
+2. Exact request flow
+Claude Code (Anthropic /v1/messages)
+        ↓
+middleware.AnthropicMessagesMiddleware()  [in middleware/anthropic.go]
+        ↓
+anthropic.FromMessagesRequest()           [in anthropic/anthropic.go:297]
+        ↓
+*api.ChatRequest (Ollama internal)
+        ↓
+s.ChatHandler (server/routes.go)
+        ↓
+Internal processing (agent/session.go, etc.)
+        ↓
+LLM runtime (llm/llama_server.go, etc. — Chat(ctx, llm.ChatRequest, ...))
+Critical conversion:
+	•	anthropic.FromMessagesRequest(r MessagesRequest) (*api.ChatRequest, error) (line ~297 in anthropic/anthropic.go).
+	◦	Converts messages[] (with content blocks: text, tool_use, tool_result, thinking) → []api.Message.
+	◦	Handles system prompt.
+	◦	Converts Anthropic tools[] (with input_schema) → api.Tools.
+	◦	Preserves tool state for multi-turn.
+The middleware then calls the shared ChatHandler, which uses the same backend as OpenAI /v1/chat/completions.
+Follow-up calls (tool use loop): Middleware maintains chatReq *api.ChatRequest internally for tool result feedback (see middleware/anthropic.go:97, 543).
+3. How Ollama translates Anthropic message blocks
+In anthropic/anthropic.go:
+	•	ContentBlock struct supports: text, image, tool_use, tool_result, thinking, server_tool_use, web_search_tool_result.
+	•	Parsing logic for incoming user messages (tool_result, tool_use from previous assistant).
+	•	Special handling for tool_use validation (id/name required).
+	•	Thinking blocks are preserved/handled specially (see tests for thinking → tool_use transitions).
+Internal format (api.ChatRequest / api.Message):
+	•	Messages have Role, Content, optional ToolResult (stored in DB too: app/store/database.go has tool_result column).
+	•	Tools are first-class in api.Tools.
+4. Tools handling
+	•	Tool definitions: Anthropic tools[] { name, description, input_schema } → api.Tool. input_schema (JSON schema) is parsed/validated (see anthropic/anthropic.go:641).
+	•	Tool calls (tool_use): Model outputs tool_use block → converted internally to tool call in api.ChatRequest.
+	•	Tool results (tool_result): Fed back in next message as content block with tool_use_id.
+	•	Ollama has special server_tool_use for internal capabilities (e.g., web search) that the middleware injects/handles transparently.
+	•	Parallel tool use supported (disable_parallel_tool_use).
+	•	Streaming tool calls emit proper content_block_start / input_json_delta etc.
+5. Streaming
+Ollama generates Anthropic SSE events directly in the middleware (middleware/anthropic.go):
+	•	writeSSE(w, "message_start", ...) (line ~632)
+	•	content_block_start (for text, tool_use, server_tool_use, web_search_tool_result)
+	•	content_block_delta (text_delta, input_json_delta, thinking_delta)
+	•	message_delta, message_stop
+See tests for exact event sequences (10+ events for complex tool+search flows).
+This is not a conversion from OpenAI chunks — it’s native Anthropic output generation layered on top of the shared LLM response stream.
+6. Comparison with your architecture
+Ollama does differently:
+	•	Native dual support: Both OpenAI /v1/chat/completions and Anthropic /v1/messages map to the same internal api.ChatRequest + shared ChatHandler/runtime. No lossy roundtrip through OpenAI format for Anthropic clients.
+	•	Deep integration: Custom blocks (server_tool_use, thinking), web search proxying, tool loop management inside middleware, direct SSE emission.
+	•	Stateful middleware: Handles follow-ups, tool results, error cases, streaming state (content indices, thinking blocks).
+	•	Preserves fidelity: Full support for Anthropic-specific features (thinking deltas, input_json_delta, exact event ordering, tool_use_id linking).
+What your conversion risks losing:
+	•	Thinking blocks / deltas.
+	•	Precise content block indexing and event ordering (Claude Code is sensitive).
+	•	Native server_tool_use / internal tool semantics.
+	•	Subtle differences in tool schema handling or error responses.
+	•	Streaming latency/ordering if OpenAI chunks don’t map 1:1.
+What to copy:
+	•	The FromMessagesRequest conversion logic (map blocks → internal messages/tools).
+	•	Direct SSE event generation instead of going through OpenAI streaming format.
+	•	Tool result feedback loop in middleware.
+Unnecessary for Atlas:
+	•	Ollama’s full internal DB/UI/agent layers.
+	•	Llama-specific runner details.
+7. Minimal implementation plan for Atlas
+Keep your current stack (Anthropic → OpenAI → NVIDIA). Just improve the Anthropic compatibility layer.
+	1	Enhance your Anthropic handler (/v1/messages):
+	◦	Implement/use a proper FromMessagesRequest equivalent (copy structure from Ollama’s anthropic/anthropic.go).
+	◦	Parse full content blocks (text, tool_use, tool_result, thinking).
+	2	Tool support:
+	◦	Map input_schema → your tool definitions accurately.
+	◦	Preserve tool_use_id → tool_call_id mapping bidirectionally.
+	◦	Handle tool_result feedback in multi-turn (store state per conversation if needed).
+	3	Streaming (biggest win):
+	◦	Instead of converting Anthropic → OpenAI chunks → back, generate Anthropic SSE events directly from your internal response stream (or NVIDIA output).
+	◦	Emit message_start, content_block_start (with proper indices), deltas, message_stop.
+	◦	Reference Ollama’s writeSSE and event structs.
+	4	Middleware improvements:
+	◦	Add state for tool loops/follow-ups (like Ollama’s chatReq field).
+	◦	Special-case server_tool_use or internal tools if you want parity.
+	5	Validation & edge cases:
+	◦	Copy error handling for missing tool_use id/name.
+	◦	Support thinking blocks if your backend emits reasoning.
+Priority order (smallest changes → biggest fidelity):
+	•	Accurate request conversion (FromMessagesRequest).
+	•	Tool use/result roundtripping.
+	•	Direct SSE event emission (bypass OpenAI format for Anthropic paths).
+	•	Thinking / advanced block support.
+This will make your Atlas behave much more like Ollama’s “native” support without redesigning anything. Claude Code should feel seamless.
+Study middleware/anthropic.go + anthropic/anthropic.go (and their tests) for the exact mapping logic — they are the reference.
+

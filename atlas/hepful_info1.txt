@@ -1,0 +1,1144 @@
+grep -R "anthropic" -n . | head -100
+
+find . -iname "*anthropic*"
+
+grep -R '"/v1/messages"' -n .
+
+grep -R "tool_use" -n .
+grep -R "tool_result" -n .
+grep -R "input_schema" -n .
+
+grep -R "ChatRequest" -n .
+
+grep -R "message_start" -n .
+grep -R "content_block_delta" -n .
+grep -R "message_stop" -n .
+
+grep -R '"/v1/messages"' -n .
+grep -R "tool_use" -n .
+grep -R "ChatRequest" -n .
+grep -R "message_start" -n .
+./cmd/launch/omp_test.go:403:  anthropic:
+./cmd/launch/omp_test.go:404:    baseUrl: https://example.com/anthropic
+./cmd/launch/omp_test.go:439:   if _, ok := providers["anthropic"]; !ok {
+./cmd/launch/openclaw_test.go:637:              os.WriteFile(configPath, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"xxx"}}}}`), 0o644)
+./cmd/launch/openclaw_test.go:646:              if providers["anthropic"] == nil {
+./cmd/launch/openclaw_test.go:647:                      t.Error("anthropic provider was removed")
+./cmd/launch/openclaw_test.go:1038:      "anthropic": {"apiKey": "xxx"},
+./cmd/launch/openclaw_test.go:1082:     if providers["anthropic"] == nil {
+./cmd/launch/openclaw_test.go:1083:             t.Error("anthropic provider not preserved")
+./cmd/launch/cline_test.go:330:                 "actModeApiProvider":   "anthropic",
+./cmd/launch/cline_test.go:382:                 "actModeApiProvider":   "anthropic",
+./cmd/launch/pi_test.go:1296:                   "defaultProvider": "anthropic",
+./server/routes_cloud_test.go:712:                      t.Fatalf("expected anthropic streaming message_stop event, got body %q", string(body))
+./server/cloud_proxy.go:31:     legacyCloudAnthropicKey       = "legacy_cloud_anthropic_web_search"
+grep: ./.git/index: binary file matches
+grep: ./.git/objects/pack/pack-2ffa6023987235580660b55b9cc380a50f03d185.pack: binary file matches
+./.git/packed-refs:105:90e142f60fb2c0cd437a58923d50aa1591b01b7d refs/remotes/origin/hoyyeva/anthropic-local-image-path
+./.git/packed-refs:106:5286dfdbde4a80e7d8fb30fe5de869b9269c48ec refs/remotes/origin/hoyyeva/anthropic-reference-images-path
+./.git/packed-refs:314:5286dfdbde4a80e7d8fb30fe5de869b9269c48ec refs/remotes/origin/parth-anthropic-reference-images-path
+./middleware/anthropic_test.go:16:      "github.com/ollama/ollama/anthropic"
+./middleware/anthropic_test.go:43:              err  anthropic.ErrorResponse
+./middleware/anthropic_test.go:245:                     err: anthropic.ErrorResponse{
+./middleware/anthropic_test.go:247:                             Error: anthropic.Error{
+./middleware/anthropic_test.go:261:                     err: anthropic.ErrorResponse{
+./middleware/anthropic_test.go:263:                             Error: anthropic.Error{
+./middleware/anthropic_test.go:275:                     err: anthropic.ErrorResponse{
+./middleware/anthropic_test.go:277:                             Error: anthropic.Error{
+./middleware/anthropic_test.go:294:                     err: anthropic.ErrorResponse{
+./middleware/anthropic_test.go:296:                             Error: anthropic.Error{
+./middleware/anthropic_test.go:328:                             var errResp anthropic.ErrorResponse
+./middleware/anthropic_test.go:423:     var errResp anthropic.ErrorResponse
+./middleware/anthropic_test.go:472:     var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:568:                     var errResp anthropic.ErrorResponse
+./middleware/anthropic_test.go:614:             tools    []anthropic.Tool
+./middleware/anthropic_test.go:624:                     tools: []anthropic.Tool{
+./middleware/anthropic_test.go:631:                     tools: []anthropic.Tool{
+./middleware/anthropic_test.go:638:                     tools: []anthropic.Tool{
+./middleware/anthropic_test.go:764:     var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:821:     var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:912:                     var cbs anthropic.ContentBlockStartEvent
+./middleware/anthropic_test.go:920:                     var cbd anthropic.ContentBlockDeltaEvent
+./middleware/anthropic_test.go:969:             resp := anthropic.OllamaWebSearchResponse{
+./middleware/anthropic_test.go:970:                     Results: []anthropic.OllamaWebSearchResult{
+./middleware/anthropic_test.go:979:     originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:980:     anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:981:     defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go:1025:    var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:1090:            resp := anthropic.OllamaWebSearchResponse{
+./middleware/anthropic_test.go:1091:                    Results: []anthropic.OllamaWebSearchResult{
+./middleware/anthropic_test.go:1098:    originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:1099:    anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:1100:    defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go:1182:    var textDelta anthropic.ContentBlockDeltaEvent
+./middleware/anthropic_test.go:1201:    response := anthropic.MessagesResponse{
+./middleware/anthropic_test.go:1206:            Content: []anthropic.ContentBlock{
+./middleware/anthropic_test.go:1216:                            Content: []anthropic.WebSearchResult{
+./middleware/anthropic_test.go:1226:            Usage:      anthropic.Usage{InputTokens: 20, OutputTokens: 10},
+./middleware/anthropic_test.go:1241:            req:        anthropic.MessagesRequest{Model: "test-model"},
+./middleware/anthropic_test.go:1275:    var msgStart anthropic.MessageStartEvent
+./middleware/anthropic_test.go:1290:    var toolStart anthropic.ContentBlockStartEvent
+./middleware/anthropic_test.go:1305:    var searchStart anthropic.ContentBlockStartEvent
+./middleware/anthropic_test.go:1317:    var textStart anthropic.ContentBlockStartEvent
+./middleware/anthropic_test.go:1333:    var textDelta anthropic.ContentBlockDeltaEvent
+./middleware/anthropic_test.go:1348:    var msgDelta anthropic.MessageDeltaEvent
+./middleware/anthropic_test.go:1379:            req:        anthropic.MessagesRequest{Model: "test-model"},
+./middleware/anthropic_test.go:1382:    errorUsage := anthropic.Usage{InputTokens: 7, OutputTokens: 2}
+./middleware/anthropic_test.go:1387:    var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:1430:    var errContent anthropic.WebSearchToolResultError
+./middleware/anthropic_test.go:1465:            req:        anthropic.MessagesRequest{Model: "test-model"},
+./middleware/anthropic_test.go:1468:    errorUsage := anthropic.Usage{InputTokens: 9, OutputTokens: 4}
+./middleware/anthropic_test.go:1501:    var toolStart anthropic.ContentBlockStartEvent
+./middleware/anthropic_test.go:1510:    var resultStart anthropic.ContentBlockStartEvent
+./middleware/anthropic_test.go:1518:    var msgDelta anthropic.MessageDeltaEvent
+./middleware/anthropic_test.go:1543:            req:        anthropic.MessagesRequest{Model: "test-model"},
+./middleware/anthropic_test.go:1546:    if err := wsWriter.sendError("invalid_request", "", anthropic.Usage{}); err != nil {
+./middleware/anthropic_test.go:1550:    var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:1656:                    resp := anthropic.OllamaWebSearchResponse{
+./middleware/anthropic_test.go:1657:                            Results: []anthropic.OllamaWebSearchResult{
+./middleware/anthropic_test.go:1664:            originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:1665:            anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:1666:            defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go:1704:            var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:1847:            var errResp anthropic.ErrorResponse
+./middleware/anthropic_test.go:1898:            resp := anthropic.OllamaWebSearchResponse{
+./middleware/anthropic_test.go:1899:                    Results: []anthropic.OllamaWebSearchResult{
+./middleware/anthropic_test.go:1906:    originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:1907:    anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:1908:    defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go:1979:    originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:1980:    anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:1981:    defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go:2025:    var result anthropic.MessagesResponse
+./middleware/anthropic_test.go:2063:            resp := anthropic.OllamaWebSearchResponse{
+./middleware/anthropic_test.go:2064:                    Results: []anthropic.OllamaWebSearchResult{
+./middleware/anthropic_test.go:2071:    originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:2072:    anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:2073:    defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go:2175:            resp := anthropic.OllamaWebSearchResponse{
+./middleware/anthropic_test.go:2176:                    Results: []anthropic.OllamaWebSearchResult{
+./middleware/anthropic_test.go:2183:    originalEndpoint := anthropic.WebSearchEndpoint
+./middleware/anthropic_test.go:2184:    anthropic.WebSearchEndpoint = searchServer.URL
+./middleware/anthropic_test.go:2185:    defer func() { anthropic.WebSearchEndpoint = originalEndpoint }()
+./middleware/anthropic_test.go
+./middleware/anthropic.go
+./anthropic
+./anthropic/anthropic_test.go
+./anthropic/anthropic.go
+./docs/api/anthropic-compatibility.mdx
+./api/client_test.go:314:                       err := client.do(t.Context(), http.MethodPost, "/v1/messages", nil, &resp)
+./server/routes_cloud_test.go:517:              req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/routes_cloud_test.go:534:              if capture.path != "/v1/messages" {
+./server/routes_cloud_test.go:568:              req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/routes_cloud_test.go:585:              if capture.path != "/v1/messages" {
+./server/routes_cloud_test.go:937:              "/v1/messages",
+./server/routes_cloud_test.go:952:      req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/routes_cloud_test.go:996:              "/v1/messages",
+./server/routes_cloud_test.go:1011:     req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/cloud_proxy.go:125:            if c.Request.URL.Path == "/v1/messages" {
+./server/routes.go:1922:        r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.AnthropicMessagesMiddleware(), s.ChatHandler)...)
+./server/routes_request_log_test.go:120:                {route: "/v1/messages", want: "v1_messages"},
+./middleware/anthropic_test.go:311:     router.Handle(http.MethodPost, "/v1/messages", endpoint)
+./middleware/anthropic_test.go:315:                     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(tc.body))
+./middleware/anthropic_test.go:385:             router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:397:             req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:409:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:413:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{invalid json`))
+./middleware/anthropic_test.go:441:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:462:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:550:                     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:558:                     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:592:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:598:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:737:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:754:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:789:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:811:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:848:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:883:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:985:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1015:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1104:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1145:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1611:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1626:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1670:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1695:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1732:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1747:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1764:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1779:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1796:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1811:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1830:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1835:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1862:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1877:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1925:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1955:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1985:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2015:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2077:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2127:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2189:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2236:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2302:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2342:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2417:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2450:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2561:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2591:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2679:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2709:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2787:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2835:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2907:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2937:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:188:                                             {"type": "tool_use", "id": "call_123", "name": "get_weather", "input": {"location": "Paris"}}
+./middleware/anthropic_test.go:191:                                             {"type": "tool_result", "tool_use_id": "call_123", "content": "Sunny, 22°C"}
+./middleware/anthropic_test.go:284:                     name: "tool_use missing id error",
+./middleware/anthropic_test.go:290:                                             {"type": "tool_use", "name": "test"}
+./middleware/anthropic_test.go:298:                                     Message: "tool_use block missing required 'id' field",
+./middleware/anthropic_test.go:1037:    // Should have 3 blocks: server_tool_use + web_search_tool_result + text
+./middleware/anthropic_test.go:1042:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:1043:            t.Errorf("expected first block type 'server_tool_use', got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:1053:            t.Errorf("tool_use_id mismatch: %q != %q", result.Content[1].ToolUseID, result.Content[0].ID)
+./middleware/anthropic_test.go:1157:    // Success path: 10 events (3 blocks: server_tool_use, web_search_tool_result, text with delta)
+./middleware/anthropic_test.go:1160:            "content_block_start", // server_tool_use
+./middleware/anthropic_test.go:1208:                            Type:  "server_tool_use",
+./middleware/anthropic_test.go:1253:            "content_block_start", // server_tool_use (index 0)
+./middleware/anthropic_test.go:1289:    // Verify content_block_start for server_tool_use (event index 1)
+./middleware/anthropic_test.go:1292:            t.Fatalf("failed to parse server_tool_use start: %v", err)
+./middleware/anthropic_test.go:1297:    if toolStart.ContentBlock.Type != "server_tool_use" {
+./middleware/anthropic_test.go:1298:            t.Errorf("expected type 'server_tool_use', got %q", toolStart.ContentBlock.Type)
+./middleware/anthropic_test.go:1399:    // Should have exactly 2 blocks: server_tool_use + web_search_tool_result
+./middleware/anthropic_test.go:1404:    // Block 0: server_tool_use
+./middleware/anthropic_test.go:1405:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:1406:            t.Errorf("expected 'server_tool_use', got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:1425:            t.Errorf("expected tool_use_id %q, got %q", expectedToolID, result.Content[1].ToolUseID)
+./middleware/anthropic_test.go:1475:    // Error response has 2 blocks: server_tool_use + web_search_tool_result
+./middleware/anthropic_test.go:1477:    //   content_block_start(server_tool_use), content_block_stop,
+./middleware/anthropic_test.go:1500:    // Verify the server_tool_use block
+./middleware/anthropic_test.go:1503:            t.Fatalf("failed to parse server_tool_use start: %v", err)
+./middleware/anthropic_test.go:1505:    if toolStart.ContentBlock.Type != "server_tool_use" {
+./middleware/anthropic_test.go:1506:            t.Errorf("expected 'server_tool_use', got %q", toolStart.ContentBlock.Type)
+./middleware/anthropic_test.go:2030:    // Error response: server_tool_use + web_search_tool_result with error
+./middleware/anthropic_test.go:2034:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:2035:            t.Errorf("expected 'server_tool_use', got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:2360:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:2361:            t.Fatalf("expected server_tool_use first, got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:2368:            if block.Type == "tool_use" && block.Name == "get_weather" {
+./middleware/anthropic_test.go:2369:                    t.Fatalf("did not expect get_weather tool_use in mixed web_search-preferred path: %+v", result.Content)
+./middleware/anthropic_test.go:2424:                                            ID: "call_ws_tool_use",
+./middleware/anthropic_test.go:2465:    if result.StopReason != "tool_use" {
+./middleware/anthropic_test.go:2466:            t.Fatalf("expected stop_reason tool_use, got %q", result.StopReason)
+./middleware/anthropic_test.go:2469:            t.Fatalf("expected server blocks + tool_use, got %d blocks", len(result.Content))
+./middleware/anthropic_test.go:2472:    if last.Type != "tool_use" {
+./middleware/anthropic_test.go:2473:            t.Fatalf("expected final block tool_use, got %q", last.Type)
+./middleware/anthropic_test.go:2618:            if block.Type == "server_tool_use" {
+./middleware/anthropic_test.go:2626:            t.Fatalf("expected two search iterations, got server_tool_use=%d web_search_tool_result=%d", serverToolUses, webResults)
+./middleware/anthropic_test.go:2800:                                                    ID: "call_ws_stream_tool_use",
+./middleware/anthropic_test.go:2865:                    if start.ContentBlock.Type == "tool_use" && start.ContentBlock.Name == "get_weather" {
+./middleware/anthropic_test.go:2874:    if messageDelta.Delta.StopReason != "tool_use" {
+./middleware/anthropic_test.go:2875:            t.Fatalf("expected stop_reason tool_use, got %q", messageDelta.Delta.StopReason)
+./middleware/anthropic_test.go:2878:            t.Fatal("expected tool_use content block for get_weather")
+./middleware/anthropic.go:91:// Anthropic-format response (server_tool_use + web_search_tool_result + text).
+./middleware/anthropic.go:283:                          Type:  "server_tool_use",
+./middleware/anthropic.go:348:                  Type:  "server_tool_use",
+./middleware/anthropic.go:786:                          Type:  "server_tool_use",
+./anthropic/anthropic_test.go:204:                                              Type:  "tool_use",
+./anthropic/anthropic_test.go:341:                                              Type:  "tool_use",
+./anthropic/anthropic_test.go:680:                                              Type: "tool_use",
+./anthropic/anthropic_test.go:690:              t.Fatal("expected error for missing tool_use id")
+./anthropic/anthropic_test.go:692:      if err.Error() != "tool_use block missing required 'id' field" {
+./anthropic/anthropic_test.go:706:                                              Type: "tool_use",
+./anthropic/anthropic_test.go:716:              t.Fatal("expected error for missing tool_use name")
+./anthropic/anthropic_test.go:718:      if err.Error() != "tool_use block missing required 'name' field" {
+./anthropic/anthropic_test.go:806:      if result.Content[0].Type != "tool_use" {
+./anthropic/anthropic_test.go:807:              t.Errorf("expected type 'tool_use', got %q", result.Content[0].Type)
+./anthropic/anthropic_test.go:815:      if result.StopReason != "tool_use" {
+./anthropic/anthropic_test.go:816:              t.Errorf("expected stop_reason 'tool_use', got %q", result.StopReason)
+./anthropic/anthropic_test.go:856:              {"stop", true, "tool_use"},
+./anthropic/anthropic_test.go:1021:                             if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1036:             t.Error("expected tool_use content_block_start event")
+./anthropic/anthropic_test.go:1044:// model emits a thinking block followed directly by a tool_use block (with no
+./anthropic/anthropic_test.go:1046:// block and increments the content index before opening the tool_use block.
+./anthropic/anthropic_test.go:1047:// Previously, the converter reused contentIndex=0 for the tool_use block,
+./anthropic/anthropic_test.go:1098:     // Expect: content_block_stop(index=0), content_block_start(tool_use, index=1),
+./anthropic/anthropic_test.go:1114:                     if start, ok := e.Data.(ContentBlockStartEvent); ok && start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1128:             t.Fatal("expected content_block_start for tool_use block")
+./anthropic/anthropic_test.go:1131:             t.Errorf("expected tool_use block at index 1, got %+v", toolStart.Data)
+./anthropic/anthropic_test.go:1140:             t.Error("expected content_block_stop for tool_use block (index 1)")
+./anthropic/anthropic_test.go:1225:     // Verify no tool_use block was started (since marshal failed before block start)
+./anthropic/anthropic_test.go:1230:                             if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1238:             t.Error("expected no tool_use block when arguments cannot be marshaled")
+./anthropic/anthropic_test.go:1277:     // Count tool_use blocks - should only have 1 (the valid one)
+./anthropic/anthropic_test.go:1283:                             if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1301:             t.Errorf("expected 1 tool_use block, got %d", toolStartCount)
+./anthropic/anthropic_test.go:1482:     t.Run("tool_use block start includes empty input object", func(t *testing.T) {
+./anthropic/anthropic_test.go:1507:                                     if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1519:                                                     t.Error("content_block_start for tool_use should include 'input' field")
+./anthropic/anthropic_test.go:1536:                     t.Error("expected tool_use content_block_start event")
+./anthropic/anthropic_test.go:1715:                             Type:  "server_tool_use",
+./anthropic/anthropic.go:117:   Type string `json:"type"` // text, image, tool_use, tool_result, thinking, server_tool_use, web_search_tool_result
+./anthropic/anthropic.go:128:   // For tool_use and server_tool_use blocks
+./anthropic/anthropic.go:134:   ToolUseID string `json:"tool_use_id,omitempty"`
+./anthropic/anthropic.go:190:   DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
+./anthropic/anthropic.go:457:           case "tool_use":
+./anthropic/anthropic.go:460:                           logutil.Trace("anthropic: tool_use block missing id", "role", role)
+./anthropic/anthropic.go:461:                           return nil, errors.New("tool_use block missing required 'id' field")
+./anthropic/anthropic.go:464:                           logutil.Trace("anthropic: tool_use block missing name", "role", role)
+./anthropic/anthropic.go:465:                           return nil, errors.New("tool_use block missing required 'name' field")
+./anthropic/anthropic.go:496:           case "server_tool_use":
+./anthropic/anthropic.go:542:           "tool_use", toolUseBlocks,
+./anthropic/anthropic.go:544:           "server_tool_use", serverToolUseBlocks,
+./anthropic/anthropic.go:675:                   Type:  "tool_use",
+./anthropic/anthropic.go:701:           return "tool_use"
+./anthropic/anthropic.go:866:           // Close thinking block if still open (thinking → tool_use without text in between)
+./anthropic/anthropic.go:902:                                   Type:  "tool_use",
+./anthropic/anthropic.go:1163:  if block.Type == "tool_use" || block.Type == "tool_result" {
+./anthropic/trace.go:181:       case "tool_use", "server_tool_use":
+./anthropic/trace.go:186:               out["tool_use_id"] = block["tool_use_id"]
+./docs/api/anthropic-compatibility.mdx:164:    if block.type == 'tool_use':
+./docs/api/anthropic-compatibility.mdx:200:  if (block.type === "tool_use") {
+./docs/api/anthropic-compatibility.mdx:310:  - [x] `tool_use` blocks
+./docs/api/anthropic-compatibility.mdx:330:- [x] `content` (text, tool_use, thinking blocks)
+./docs/api/anthropic-compatibility.mdx:331:- [x] `stop_reason` (end_turn, max_tokens, tool_use)
+./server/images.go:205:         strings.Contains(chatTemplate, "tool_results") ||
+./middleware/anthropic_test.go:191:                                             {"type": "tool_result", "tool_use_id": "call_123", "content": "Sunny, 22°C"}
+./middleware/anthropic_test.go:1037:    // Should have 3 blocks: server_tool_use + web_search_tool_result + text
+./middleware/anthropic_test.go:1049:    if result.Content[1].Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:1050:            t.Errorf("expected second block type 'web_search_tool_result', got %q", result.Content[1].Type)
+./middleware/anthropic_test.go:1157:    // Success path: 10 events (3 blocks: server_tool_use, web_search_tool_result, text with delta)
+./middleware/anthropic_test.go:1162:            "content_block_start", // web_search_tool_result
+./middleware/anthropic_test.go:1214:                            Type:      "web_search_tool_result",
+./middleware/anthropic_test.go:1255:            "content_block_start", // web_search_tool_result (index 1)
+./middleware/anthropic_test.go:1304:    // Verify content_block_start for web_search_tool_result (event index 3)
+./middleware/anthropic_test.go:1307:            t.Fatalf("failed to parse web_search_tool_result start: %v", err)
+./middleware/anthropic_test.go:1312:    if searchStart.ContentBlock.Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:1313:            t.Errorf("expected type 'web_search_tool_result', got %q", searchStart.ContentBlock.Type)
+./middleware/anthropic_test.go:1399:    // Should have exactly 2 blocks: server_tool_use + web_search_tool_result
+./middleware/anthropic_test.go:1420:    // Block 1: web_search_tool_result with error
+./middleware/anthropic_test.go:1421:    if result.Content[1].Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:1422:            t.Errorf("expected 'web_search_tool_result', got %q", result.Content[1].Type)
+./middleware/anthropic_test.go:1434:    if errContent.Type != "web_search_tool_result_error" {
+./middleware/anthropic_test.go:1435:            t.Errorf("expected error type 'web_search_tool_result_error', got %q", errContent.Type)
+./middleware/anthropic_test.go:1475:    // Error response has 2 blocks: server_tool_use + web_search_tool_result
+./middleware/anthropic_test.go:1478:    //   content_block_start(web_search_tool_result), content_block_stop,
+./middleware/anthropic_test.go:1509:    // Verify the web_search_tool_result block
+./middleware/anthropic_test.go:1512:            t.Fatalf("failed to parse web_search_tool_result start: %v", err)
+./middleware/anthropic_test.go:1514:    if resultStart.ContentBlock.Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:1515:            t.Errorf("expected 'web_search_tool_result', got %q", resultStart.ContentBlock.Type)
+./middleware/anthropic_test.go:1716:                    if block.Type == "web_search_tool_result" {
+./middleware/anthropic_test.go:1724:                    t.Fatal("expected web_search_tool_result content block in response")
+./middleware/anthropic_test.go:2030:    // Error response: server_tool_use + web_search_tool_result with error
+./middleware/anthropic_test.go:2037:    if result.Content[1].Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:2038:            t.Errorf("expected 'web_search_tool_result', got %q", result.Content[1].Type)
+./middleware/anthropic_test.go:2363:    if result.Content[1].Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:2364:            t.Fatalf("expected web_search_tool_result second, got %q", result.Content[1].Type)
+./middleware/anthropic_test.go:2621:            if block.Type == "web_search_tool_result" {
+./middleware/anthropic_test.go:2626:            t.Fatalf("expected two search iterations, got server_tool_use=%d web_search_tool_result=%d", serverToolUses, webResults)
+./middleware/anthropic_test.go:2728:    if last.Type != "web_search_tool_result" {
+./middleware/anthropic_test.go:2729:            t.Fatalf("expected last block web_search_tool_result, got %q", last.Type)
+./middleware/anthropic.go:91:// Anthropic-format response (server_tool_use + web_search_tool_result + text).
+./middleware/anthropic.go:289:                          Type:      "web_search_tool_result",
+./middleware/anthropic.go:354:                  Type:      "web_search_tool_result",
+./middleware/anthropic.go:357:                          Type:      "web_search_tool_result_error",
+./middleware/anthropic.go:792:                          Type:      "web_search_tool_result",
+./middleware/anthropic.go:795:                                  Type:      "web_search_tool_result_error",
+./anthropic/anthropic_test.go:245:                                              Type:      "tool_result",
+./anthropic/anthropic_test.go:286:                                              Type:      "tool_result",
+./anthropic/anthropic_test.go:352:                                              Type:      "tool_result",
+./anthropic/anthropic_test.go:1751:                             Type:      "web_search_tool_result",
+./anthropic/anthropic_test.go:1792:                             Type:      "web_search_tool_result",
+./anthropic/anthropic_test.go:1823:                             Type:      "web_search_tool_result",
+./anthropic/anthropic_test.go:1826:                                     "type":       "web_search_tool_result_error",
+./anthropic/anthropic_test.go:1913:             Type:      "web_search_tool_result_error",
+./anthropic/anthropic.go:117:   Type string `json:"type"` // text, image, tool_use, tool_result, thinking, server_tool_use, web_search_tool_result
+./anthropic/anthropic.go:133:   // For tool_result and web_search_tool_result blocks
+./anthropic/anthropic.go:163:   Type      string `json:"type"` // "web_search_tool_result_error"
+./anthropic/anthropic.go:475:           case "tool_result":
+./anthropic/anthropic.go:479:                           logutil.Trace("anthropic: invalid tool_result content", "role", role, "error", err)
+./anthropic/anthropic.go:506:           case "web_search_tool_result":
+./anthropic/anthropic.go:543:           "tool_result", toolResultBlocks,
+./anthropic/anthropic.go:579:                   case "web_search_tool_result_error":
+./anthropic/anthropic.go:582:                                   return "web_search_tool_result_error"
+./anthropic/anthropic.go:584:                           return "web_search_tool_result_error: " + errorCode
+./anthropic/anthropic.go:589:           if c["type"] == "web_search_tool_result_error" {
+./anthropic/anthropic.go:592:                           return "web_search_tool_result_error"
+./anthropic/anthropic.go:594:                   return "web_search_tool_result_error: " + errorCode
+./anthropic/anthropic.go:603:                   return "web_search_tool_result_error"
+./anthropic/anthropic.go:605:           return "web_search_tool_result_error: " + c.ErrorCode
+./anthropic/anthropic.go:1034:                                  return "", nil, errors.New("invalid tool_result image source")
+./anthropic/anthropic.go:1163:  if block.Type == "tool_use" || block.Type == "tool_result" {
+./anthropic/trace.go:185:       case "tool_result", "web_search_tool_result":
+./docs/api/anthropic-compatibility.mdx:311:  - [x] `tool_result` blocks
+./app/store/store.go:44:        ToolResult        *json.RawMessage `json:"tool_result,omitempty"`
+./app/store/database.go:118:            tool_result TEXT,
+./app/store/database.go:197:                    // Migrate from version 3 to 4: add tool_result column to messages table
+./app/store/database.go:327:    _, err := db.conn.Exec(`ALTER TABLE messages ADD COLUMN tool_result TEXT;`)
+./app/store/database.go:329:            return fmt.Errorf("add tool_result column: %w", err)
+./app/store/database.go:790:            SET content = ?, thinking = ?, model_name = ?, updated_at = ?, thinking_time_start = ?, thinking_time_end = ?, tool_result = ?
+./app/store/database.go:888:            SELECT id, role, content, thinking, stream, model_name, created_at, updated_at, thinking_time_start, thinking_time_end, tool_result
+./app/store/database.go:970:            INSERT INTO messages (chat_id, role, content, thinking, stream, model_name, created_at, updated_at, thinking_time_start, thinking_time_end, tool_result)
+./app/ui/responses/types.go:58: EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\""`
+./app/ui/app/src/components/Message.tsx:266:  const rawToolResult = (message as any).tool_result;
+./app/ui/app/src/hooks/useChats.ts:552:          case "tool_result": {
+./app/ui/app/src/hooks/useChats.ts:571:                      tool_result: (event as any).toolResultData,
+./app/ui/app/codegen/gotypes.gen.ts:114:    tool_result?: number[];
+./app/ui/app/codegen/gotypes.gen.ts:131:        this.tool_result = source["tool_result"];
+./app/ui/app/codegen/gotypes.gen.ts:327:    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created";
+./app/ui/ui.go:92:      EventToolResult Event = "tool_result" // Used for both tool calls and their results
+./app/ui/ui.go:1050:                                                    EventName:      "tool_result",
+./app/ui/ui.go:1117:                                            EventName:      "tool_result",
+./middleware/anthropic_test.go:146:                                     "input_schema": {
+./middleware/anthropic_test.go:2339:                    {"type":"custom","name":"get_weather","input_schema":{"type":"object"}}
+./middleware/anthropic_test.go:2447:                    {"type":"custom","name":"get_weather","input_schema":{"type":"object"}}
+./middleware/anthropic_test.go:2832:                    {"type":"custom","name":"get_weather","input_schema":{"type":"object"}}
+./anthropic/anthropic.go:180:   InputSchema json.RawMessage `json:"input_schema,omitempty"`
+./anthropic/anthropic.go:641:                   return api.Tool{}, false, fmt.Errorf("invalid input_schema for tool %q: %w", t.Name, err)
+./anthropic/trace.go:217:               "input_schema": TraceJSON(t.InputSchema),
+./docs/api/anthropic-compatibility.mdx:148:            'input_schema': {
+./docs/api/anthropic-compatibility.mdx:184:      input_schema: {
+./docs/api/anthropic-compatibility.mdx:217:      "input_schema": {
+./x/mlxrunner/client.go:216:func (c *Client) Chat(ctx context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./x/mlxrunner/client.go:220:func (c *Client) ApplyChatTemplate(ctx context.Context, req llm.ChatRequest) (string, error) {
+./x/imagegen/server.go:382:func (s *Server) Chat(ctx context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./x/imagegen/server.go:386:func (s *Server) ApplyChatTemplate(ctx context.Context, req llm.ChatRequest) (string, error) {
+./integration/audio_test.go:55: req := api.ChatRequest{
+./integration/audio_test.go:94:                 req := api.ChatRequest{
+./integration/generate_jinja_test.go:42:                chatRender := debugChatRender(ctx, t, client, api.ChatRequest{
+./integration/generate_jinja_test.go:220:func debugChatRender(ctx context.Context, t *testing.T, client *api.Client, req api.ChatRequest) string {
+./integration/chat_cases_test.go:62:func chatModelRequest(model string) (api.ChatRequest, []string) {
+./integration/chat_cases_test.go:63:    req := api.ChatRequest{
+./integration/concurrency_test.go:25:   req, resp := ChatRequests()
+./integration/concurrency_test.go:174:                  reqs, resps := ChatRequests()
+./integration/create_test.go:186:       chatReq := &api.ChatRequest{
+./integration/imagegen_test.go:86:                      chatReq := api.ChatRequest{
+./integration/context_test.go:37:       req := api.ChatRequest{
+./integration/context_test.go:101:      req := api.ChatRequest{
+./integration/context_test.go:239:      req, resp := ChatRequests()
+./integration/context_test.go:304:      req := api.ChatRequest{
+./integration/vision_test.go:95:                        req := api.ChatRequest{
+./integration/vision_test.go:162:                       req := api.ChatRequest{
+./integration/vision_test.go:205:                       req := api.ChatRequest{
+./integration/vision_test.go:243:                       req := api.ChatRequest{
+./integration/vision_test.go:279:                       req := api.ChatRequest{
+./integration/vision_test.go:324:                       req := api.ChatRequest{
+./integration/vision_test.go:363:                       req := api.ChatRequest{
+./integration/llm_image_test.go:35:     req := api.ChatRequest{
+./integration/api_test.go:207:  req := api.ChatRequest{
+./integration/api_test.go:554:  req := api.ChatRequest{
+./integration/thinking_test.go:31:                      req := api.ChatRequest{
+./integration/thinking_test.go:103:                     req := api.ChatRequest{
+./integration/tools_test.go:96: req := api.ChatRequest{
+./integration/utils_test.go:352:func ChatTestHelper(ctx context.Context, t *testing.T, req api.ChatRequest, anyResp []string) {
+./integration/utils_test.go:499:func DoChat(ctx context.Context, t *testing.T, client *api.Client, req api.ChatRequest, anyResp []string, initialTimeout, streamTimeout time.Duration) *api.Message {
+./integration/utils_test.go:576:func ChatRequests() ([]api.ChatRequest, [][]string) {
+./integration/utils_test.go:578:        reqs := make([]api.ChatRequest, len(genReqs))
+./integration/quantization_test.go:79:                          chatReq := api.ChatRequest{
+./integration/basic_test.go:20: req := api.ChatRequest{
+./integration/basic_test.go:45: req := api.ChatRequest{
+./integration/basic_test.go:87: req := api.ChatRequest{
+./integration/basic_test.go:129:        req := api.ChatRequest{
+./integration/tools_stress_test.go:325: req := api.ChatRequest{
+./integration/tools_stress_test.go:401: req := api.ChatRequest{
+./llm/llama_server_test.go:329: err := runner.Chat(t.Context(), ChatRequest{
+./llm/llama_server_test.go:405:                         err = runner.Chat(t.Context(), ChatRequest{
+./llm/server.go:65:     Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) error
+./llm/server.go:66:     ApplyChatTemplate(ctx context.Context, req ChatRequest) (string, error)
+./llm/server.go:232:type ChatRequest struct {
+./llm/llama_server.go:1797:func (s *llamaServerRunner) ApplyChatTemplate(ctx context.Context, req ChatRequest) (string, error) {
+./llm/llama_server.go:1798:     data, err := s.llamaServerChatRequest(req, false)
+./llm/llama_server.go:1843:func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) error {
+./llm/llama_server.go:1868:     lsReq, err := s.llamaServerChatRequest(req, true)
+./llm/llama_server.go:2095:func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool) (map[string]any, error) {
+./cmd/cmd.go:1811:      req := &api.ChatRequest{
+./cmd/tui/chat/debug.go:19:     request api.ChatRequest
+./cmd/tui/chat/debug.go:168:func (m chatModel) requestPreview() (api.ChatRequest, int) {
+./cmd/tui/chat/debug.go:171:    req := m.previewChatRequest(opts, messages)
+./cmd/tui/chat/debug.go:194:func (m chatModel) previewChatRequest(opts coreagent.RunOptions, messages []api.Message) api.ChatRequest {
+./cmd/tui/chat/debug.go:207:    req := api.ChatRequest{
+./cmd/tui/chat/input_test.go:316:                       request: api.ChatRequest{
+./cmd/tui/chat/input_test.go:349:                       request: api.ChatRequest{Model: "llama3.2"},
+./cmd/tui/chat/test_helpers_test.go:21: requests []*api.ChatRequest
+./cmd/tui/chat/test_helpers_test.go:29:func (chatTestClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./cmd/tui/chat/test_helpers_test.go:39:func (c *chatCaptureClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./cmd/tui/chat/test_helpers_test.go:50:func (c *chatToolLoopClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./api/types_test.go:81:                 var dec ChatRequest
+./api/examples/chat/main.go:37: req := &api.ChatRequest{
+./api/client.go:293:// Chat generates the next message in a chat. [ChatRequest] may contain a
+./api/client.go:297:func (c *Client) Chat(ctx context.Context, req *ChatRequest, fn ChatResponseFunc) error {
+./api/types.go:146:// ChatRequest describes a request sent by [Client.Chat].
+./api/types.go:147:type ChatRequest struct {
+./api/types.go:215:     // original model output when ChatRequest.Think is enabled.
+./api/types.go:922:     // original model output when ChatRequest.Think is enabled.
+./agent/session_test.go:18:     requests  []*api.ChatRequest
+./agent/session_test.go:22:func (c *fakeClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./agent/session_test.go:112:func (c cancelAfterToolCallClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./agent/session_test.go:472:func TestSessionChatRequestMatchesRunRequest(t *testing.T) {
+./agent/session_test.go:490:    want := buildChatRequest(opts, opts.NewMessages, registry.Tools())
+./agent/session_test.go:507:            t.Fatalf("ChatRequest mismatch\ngot:  %s\nwant: %s", gotJSON, wantJSON)
+./agent/session.go:19:  Chat(context.Context, *api.ChatRequest, api.ChatResponseFunc) error
+./agent/session.go:393: req := buildChatRequest(opts, messages, tools)
+./agent/session.go:443:func buildChatRequest(opts RunOptions, messages []api.Message, tools api.Tools) api.ChatRequest {
+./agent/session.go:456: req := api.ChatRequest{
+./agent/compactor.go:236:       chatReq := &api.ChatRequest{
+./agent/compactor_test.go:15:   requests  []*api.ChatRequest
+./agent/compactor_test.go:18:func (c *scriptedCompactionClient) Chat(_ context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./agent/skill_activation_test.go:13:type skillTestClient struct{ requests []*api.ChatRequest }
+./agent/skill_activation_test.go:15:func (c *skillTestClient) Chat(_ context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./server/routes_harmony_streaming_test.go:296:                  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_harmony_streaming_test.go:446:  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_harmony_streaming_test.go:630:                  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_cloud_test.go:68:               w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:60:    ChatRequest   llm.ChatRequest
+./server/routes_generate_test.go:62:    ChatFn        func(context.Context, llm.ChatRequest, func(llm.ChatResponse)) error
+./server/routes_generate_test.go:64:    TemplateFn    func(context.Context, llm.ChatRequest) (string, error)
+./server/routes_generate_test.go:78:func (m *mockRunner) Chat(ctx context.Context, r llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/routes_generate_test.go:79:    m.ChatRequest = r
+./server/routes_generate_test.go:87:func (m *mockRunner) ApplyChatTemplate(ctx context.Context, r llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:88:    m.ChatRequest = r
+./server/routes_generate_test.go:281:           ChatFn: func(_ context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/routes_generate_test.go:300:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:318:   if len(mock.ChatRequest.Messages) != 1 || mock.ChatRequest.Messages[0].Content != "hello" {
+./server/routes_generate_test.go:319:           t.Fatalf("chat_template request messages = %#v", mock.ChatRequest.Messages)
+./server/routes_generate_test.go:321:   if !mock.ChatRequest.Shift {
+./server/routes_generate_test.go:333:           TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:343:           ChatFn: func(_ context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/routes_generate_test.go:358:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:375:   if len(mock.ChatRequest.Messages) != 2 {
+./server/routes_generate_test.go:376:           t.Fatalf("chat_template request messages = %#v", mock.ChatRequest.Messages)
+./server/routes_generate_test.go:378:   if !cmp.Equal(mock.ChatRequest.Messages[0], api.Message{Role: "system", Content: "sys"}) {
+./server/routes_generate_test.go:379:           t.Fatalf("first message = %#v", mock.ChatRequest.Messages[0])
+./server/routes_generate_test.go:381:   if !cmp.Equal(mock.ChatRequest.Messages[1], api.Message{Role: "user", Content: "new ask"}) {
+./server/routes_generate_test.go:382:           t.Fatalf("second message = %#v", mock.ChatRequest.Messages[1])
+./server/routes_generate_test.go:404:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:414:   if mock.ChatRequest.Messages != nil {
+./server/routes_generate_test.go:415:           t.Fatalf("expected rendered route, chat_template request was recorded: %#v", mock.ChatRequest)
+./server/routes_generate_test.go:440:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:483:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:523:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:555:                   TemplateFn: func(context.Context, llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:583:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:625:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:716:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:846:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:865:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:879:           w := createRequest(t, s.ChatHandler, api.ChatRequest{})
+./server/routes_generate_test.go:904:           w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:918:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:998:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1028:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1049:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1070:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1133:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1257:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1380:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1425:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1451:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2180:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2200:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2316:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2439:  testChatRequest := func(t *testing.T, name string, userContent string, modelResponse string, expectedThinking string, expectedContent string, think bool) {
+./server/routes_generate_test.go:2453:                  req := api.ChatRequest{
+./server/routes_generate_test.go:2485:  testChatRequest(t, "basic thinking response",
+./server/routes_generate_test.go:2492:  testChatRequest(t, "thinking with multiple sentences",
+./server/routes_generate_test.go:2499:  testChatRequest(t, "no thinking content",
+./server/routes_generate_test.go:2540:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2632:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2735:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2919:                  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_debug_test.go:290:              request         api.ChatRequest
+./server/routes_debug_test.go:297:                      request: api.ChatRequest{
+./server/routes_debug_test.go:310:                      request: api.ChatRequest{
+./server/routes_debug_test.go:321:                      request: api.ChatRequest{
+./server/routes_debug_test.go:335:                      request: api.ChatRequest{
+./server/routes_debug_test.go:352:                      request: api.ChatRequest{
+./server/sched_test.go:2127:func (s *mockLlm) Chat(ctx context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/sched_test.go:2131:func (s *mockLlm) ApplyChatTemplate(ctx context.Context, req llm.ChatRequest) (string, error) {
+./server/routes.go:569:                         nativeReq, err := prepareNativeChatRequest(c.Request.Context(), m, r, opts, llm.ChatRequest{
+./server/routes.go:2392:func writeChatResponse(c *gin.Context, req api.ChatRequest, ch chan any) {
+./server/routes.go:2448:        var req api.ChatRequest
+./server/routes.go:2941:func prepareNativeChatRequest(ctx context.Context, m *Model, r llm.LlamaServer, opts *api.Options, nativeReq llm.ChatRequest, truncate bool) (llm.ChatRequest, error) {
+./server/routes.go:2947:func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model, r llm.LlamaServer, opts *api.Options, msgs []api.Message, checkpointStart, checkpointLoaded time.Time) {
+./server/routes.go:2949:        nativeReq, err := prepareNativeChatRequest(c.Request.Context(), m, r, opts, llm.ChatRequest{
+./server/routes.go:3038:func truncateNativeChatMessages(ctx context.Context, m *Model, r llm.LlamaServer, opts *api.Options, req llm.ChatRequest, truncate bool) ([]api.Message, error) {
+./openai/responses.go:404:// FromResponsesRequest converts a ResponsesRequest to api.ChatRequest
+./openai/responses.go:405:func FromResponsesRequest(r ResponsesRequest) (*api.ChatRequest, error) {
+./openai/responses.go:561:      return &api.ChatRequest{
+./openai/openai_test.go:32:func TestFromChatRequest_Basic(t *testing.T) {
+./openai/openai_test.go:40:     result, err := FromChatRequest(req)
+./openai/openai_test.go:58:func TestFromChatRequest_ReasoningEffort(t *testing.T) {
+./openai/openai_test.go:83:                     result, err := FromChatRequest(req)
+./openai/openai_test.go:109:func TestFromChatRequest_WithImage(t *testing.T) {
+./openai/openai_test.go:128:    result, err := FromChatRequest(req)
+./openai/openai_test.go:288:func TestFromChatRequest_WithLogprobs(t *testing.T) {
+./openai/openai_test.go:300:    result, err := FromChatRequest(req)
+./openai/openai_test.go:314:func TestFromChatRequest_LogprobsDefault(t *testing.T) {
+./openai/openai_test.go:322:    result, err := FromChatRequest(req)
+./openai/openai_test.go:792:func TestFromChatRequest_TopLogprobsRange(t *testing.T) {
+./openai/openai_test.go:816:                    result, err := FromChatRequest(req)
+./openai/openai.go:481:// FromChatRequest converts a ChatCompletionRequest to api.ChatRequest
+./openai/openai.go:482:func FromChatRequest(r ChatCompletionRequest) (*api.ChatRequest, error) {
+./openai/openai.go:651: return &api.ChatRequest{
+./openai/openai.go:860:// FromTranscriptionRequest converts a transcription request into a ChatRequest
+./openai/openai.go:862:func FromTranscriptionRequest(r TranscriptionRequest) (*api.ChatRequest, error) {
+./openai/openai.go:874: return &api.ChatRequest{
+./middleware/anthropic_test.go:42:              req  api.ChatRequest
+./middleware/anthropic_test.go:46:      var capturedRequest *api.ChatRequest
+./middleware/anthropic_test.go:59:                      req: api.ChatRequest{
+./middleware/anthropic_test.go:78:                      req: api.ChatRequest{
+./middleware/anthropic_test.go:101:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:126:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:155:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:195:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:227:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:2491:            var followupReq api.ChatRequest
+./middleware/anthropic.go:97:   chatReq        *api.ChatRequest          // converted Ollama request (for followup calls)
+./middleware/anthropic.go:543:  followUp := api.ChatRequest{
+./middleware/anthropic.go:559:          "req", anthropic.TraceChatRequest(&followUp),
+./middleware/openai_test.go:376:                req  api.ChatRequest
+./middleware/openai_test.go:380:        var capturedRequest *api.ChatRequest
+./middleware/openai_test.go:391:                        req: api.ChatRequest{
+./middleware/openai_test.go:423:                        req: api.ChatRequest{
+./middleware/openai_test.go:462:                        req: api.ChatRequest{
+./middleware/openai_test.go:505:                        req: api.ChatRequest{
+./middleware/openai_test.go:538:                        req: api.ChatRequest{
+./middleware/openai_test.go:577:                        req: api.ChatRequest{
+./middleware/openai_test.go:617:                        req: api.ChatRequest{
+./middleware/openai_test.go:656:                        req: api.ChatRequest{
+./middleware/openai_test.go:697:                        req: api.ChatRequest{
+./middleware/openai_test.go:743:                        req: api.ChatRequest{
+./middleware/openai_test.go:808:                        req: api.ChatRequest{
+./middleware/openai_test.go:1587:                       var capturedRequest *api.ChatRequest
+./middleware/openai.go:424:             chatReq, err := openai.FromChatRequest(req)
+./anthropic/anthropic.go:296:// FromMessagesRequest converts an Anthropic MessagesRequest to an Ollama api.ChatRequest
+./anthropic/anthropic.go:297:func FromMessagesRequest(r MessagesRequest) (*api.ChatRequest, error) {
+./anthropic/anthropic.go:403:   convertedRequest := &api.ChatRequest{
+./anthropic/anthropic.go:411:   logutil.Trace("anthropic: converted request", "req", TraceChatRequest(convertedRequest))
+./anthropic/trace.go:252:// TraceChatRequest returns a compact trace representation of an Ollama ChatRequest.
+./anthropic/trace.go:253:func TraceChatRequest(req *api.ChatRequest) map[string]any {
+./docs/openapi.yaml:262:    ChatRequest:
+./docs/openapi.yaml:1036:              $ref: "#/components/schemas/ChatRequest"
+./app/ui/responses/types.go:120:type ChatRequest struct {
+./app/ui/app/src/api.ts:10:  ChatRequest,
+./app/ui/app/src/api.ts:228:      new ChatRequest({
+./app/ui/app/codegen/gotypes.gen.ts:506:export class ChatRequest {
+./app/ui/ui.go:648:     var req responses.ChatRequest
+./app/ui/ui.go:916:             chatReq, err := s.buildChatRequest(reqChat, req.Model, thinkValue, availableTools)
+./app/ui/ui.go:1705:// buildChatRequest converts store.Chat to api.ChatRequest
+./app/ui/ui.go:1706:func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, availableTools []map[string]any) (*api.ChatRequest, error) {
+./app/ui/ui.go:1783:    req := &api.ChatRequest{
+./middleware/anthropic_test.go:901:     // First event should be message_start
+./middleware/anthropic_test.go:902:     if events[0].event != "message_start" {
+./middleware/anthropic_test.go:903:             t.Errorf("first event should be message_start, got %q", events[0].event)
+./middleware/anthropic_test.go:1159:            "message_start",
+./middleware/anthropic_test.go:1252:            "message_start",
+./middleware/anthropic_test.go:1274:    // Verify message_start content
+./middleware/anthropic_test.go:1277:            t.Fatalf("failed to parse message_start: %v", err)
+./middleware/anthropic_test.go:1286:            t.Errorf("expected empty content in message_start, got %d blocks", len(msgStart.Message.Content))
+./middleware/anthropic_test.go:1476:    // Expected events: message_start,
+./middleware/anthropic_test.go:1481:            "message_start",
+./middleware/anthropic_test.go:2138:    if countEventsByName(events, "message_start") != 1 {
+./middleware/anthropic_test.go:2139:            t.Fatalf("expected exactly one message_start, got %d", countEventsByName(events, "message_start"))
+./middleware/anthropic_test.go:2846:    if countEventsByName(events, "message_start") != 1 {
+./middleware/anthropic_test.go:2847:            t.Fatalf("expected exactly one message_start, got %d", countEventsByName(events, "message_start"))
+./middleware/anthropic.go:632:  if err := writeSSE(w.ResponseWriter, "message_start", anthropic.MessageStartEvent{
+./middleware/anthropic.go:633:          Type: "message_start",
+./anthropic/anthropic_test.go:937:      // Should have message_start, content_block_start, content_block_delta
+./anthropic/anthropic_test.go:938:      if events1[0].Event != "message_start" {
+./anthropic/anthropic_test.go:939:              t.Errorf("expected first event 'message_start', got %q", events1[0].Event)
+./anthropic/anthropic_test.go:1062:     // Should have: message_start, content_block_start(thinking), content_block_delta(thinking)
+./anthropic/anthropic_test.go:1066:     if events1[0].Event != "message_start" {
+./anthropic/anthropic_test.go:1067:             t.Errorf("expected first event 'message_start', got %q", events1[0].Event)
+./anthropic/anthropic_test.go:1175:             "message_start",
+./anthropic/anthropic.go:228:   Type    string           `json:"type"` // "message_start"
+./anthropic/anthropic.go:761:                   Event: "message_start",
+./anthropic/anthropic.go:763:                           Type: "message_start",
+./docs/api/anthropic-compatibility.mdx:336:- [x] `message_start`
+./middleware/anthropic_test.go:919:             if e.event == "content_block_delta" {
+./middleware/anthropic_test.go:935:             t.Error("expected content_block_delta with text_delta")
+./middleware/anthropic_test.go:1165:            "content_block_delta", // text_delta with actual content
+./middleware/anthropic_test.go:1258:            "content_block_delta", // text_delta
+./middleware/anthropic_test.go:2983:            if event.event != "content_block_delta" {
+./middleware/anthropic_test.go:2989:                    t.Fatalf("failed to unmarshal content_block_delta: %v", err)
+./middleware/anthropic.go:691:                  if err := writeSSE(w.ResponseWriter, "content_block_delta", anthropic.ContentBlockDeltaEvent{
+./middleware/anthropic.go:692:                          Type:  "content_block_delta",
+./anthropic/anthropic_test.go:937:      // Should have message_start, content_block_start, content_block_delta
+./anthropic/anthropic_test.go:944:      if events1[2].Event != "content_block_delta" {
+./anthropic/anthropic_test.go:945:              t.Errorf("expected third event 'content_block_delta', got %q", events1[2].Event)
+./anthropic/anthropic_test.go:962:      // Should have content_block_delta, content_block_stop, message_delta, message_stop
+./anthropic/anthropic_test.go:1026:             if e.Event == "content_block_delta" {
+./anthropic/anthropic_test.go:1062:     // Should have: message_start, content_block_start(thinking), content_block_delta(thinking)
+./anthropic/anthropic_test.go:1099:     //         content_block_delta(input_json_delta, index=1), content_block_stop(index=1),
+./anthropic/anthropic_test.go:1117:             case "content_block_delta":
+./anthropic/anthropic_test.go:1177:             "content_block_delta:text_delta:0",
+./anthropic/anthropic_test.go:1180:             "content_block_delta:thinking_delta:1",
+./anthropic/anthropic_test.go:1183:             "content_block_delta:text_delta:2",
+./anthropic/anthropic_test.go:1291:             if e.Event == "content_block_delta" {
+./anthropic/anthropic.go:241:   Type  string `json:"type"` // "content_block_delta"
+./anthropic/anthropic.go:808:                   Event: "content_block_delta",
+./anthropic/anthropic.go:810:                           Type:  "content_block_delta",
+./anthropic/anthropic.go:849:                   Event: "content_block_delta",
+./anthropic/anthropic.go:851:                           Type:  "content_block_delta",
+./anthropic/anthropic.go:911:                   Event: "content_block_delta",
+./anthropic/anthropic.go:913:                           Type:  "content_block_delta",
+./docs/api/anthropic-compatibility.mdx:108:    event.type === "content_block_delta" &&
+./docs/api/anthropic-compatibility.mdx:338:- [x] `content_block_delta` (text_delta, input_json_delta, thinking_delta)
+./server/routes_cloud_test.go:711:              if !strings.Contains(string(body), "event: message_stop") {
+./server/routes_cloud_test.go:712:                      t.Fatalf("expected anthropic streaming message_stop event, got body %q", string(body))
+./middleware/anthropic_test.go:927:             if e.event == "message_stop" {
+./middleware/anthropic_test.go:938:             t.Error("expected message_stop event")
+./middleware/anthropic_test.go:1168:            "message_stop",
+./middleware/anthropic_test.go:1261:            "message_stop",
+./middleware/anthropic_test.go:1479:    //   message_delta, message_stop
+./middleware/anthropic_test.go:1487:            "message_stop",
+./middleware/anthropic_test.go:2141:    if countEventsByName(events, "message_stop") != 1 {
+./middleware/anthropic_test.go:2142:            t.Fatalf("expected exactly one message_stop, got %d", countEventsByName(events, "message_stop"))
+./middleware/anthropic.go:761:  if err := writeSSE(w.ResponseWriter, "message_stop", anthropic.MessageStopEvent{
+./middleware/anthropic.go:762:          Type: "message_stop",
+./anthropic/anthropic_test.go:962:      // Should have content_block_delta, content_block_stop, message_delta, message_stop
+./anthropic/anthropic_test.go:983:              if e.Event == "message_stop" {
+./anthropic/anthropic_test.go:988:              t.Error("expected message_stop event in final chunk")
+./anthropic/anthropic_test.go:1100:     //         message_delta, message_stop
+./anthropic/anthropic_test.go:1186:             "message_stop",
+./anthropic/anthropic.go:282:   Type string `json:"type"` // "message_stop"
+./anthropic/anthropic.go:972:                   Event: "message_stop",
+./anthropic/anthropic.go:974:                           Type: "message_stop",
+./docs/api/anthropic-compatibility.mdx:341:- [x] `message_stop`
+./api/client_test.go:314:                       err := client.do(t.Context(), http.MethodPost, "/v1/messages", nil, &resp)
+./server/routes_cloud_test.go:517:              req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/routes_cloud_test.go:534:              if capture.path != "/v1/messages" {
+./server/routes_cloud_test.go:568:              req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/routes_cloud_test.go:585:              if capture.path != "/v1/messages" {
+./server/routes_cloud_test.go:937:              "/v1/messages",
+./server/routes_cloud_test.go:952:      req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/routes_cloud_test.go:996:              "/v1/messages",
+./server/routes_cloud_test.go:1011:     req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, local.URL+"/v1/messages", bytes.NewBufferString(reqBody))
+./server/cloud_proxy.go:125:            if c.Request.URL.Path == "/v1/messages" {
+./server/routes.go:1922:        r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.AnthropicMessagesMiddleware(), s.ChatHandler)...)
+./server/routes_request_log_test.go:120:                {route: "/v1/messages", want: "v1_messages"},
+./middleware/anthropic_test.go:311:     router.Handle(http.MethodPost, "/v1/messages", endpoint)
+./middleware/anthropic_test.go:315:                     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(tc.body))
+./middleware/anthropic_test.go:385:             router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:397:             req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:409:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:413:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{invalid json`))
+./middleware/anthropic_test.go:441:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:462:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:550:                     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:558:                     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:592:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:598:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:737:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:754:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:789:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:811:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:848:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:883:     req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:985:     router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1015:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1104:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1145:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1611:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1626:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1670:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1695:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1732:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1747:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1764:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1779:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1796:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1811:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1830:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1835:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1862:            router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1877:            req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1925:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:1955:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:1985:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2015:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2077:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2127:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2189:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2236:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2302:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2342:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2417:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2450:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2561:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2591:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2679:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2709:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2787:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2835:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:2907:    router.POST("/v1/messages", func(c *gin.Context) {
+./middleware/anthropic_test.go:2937:    req, _ := http.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+./middleware/anthropic_test.go:188:                                             {"type": "tool_use", "id": "call_123", "name": "get_weather", "input": {"location": "Paris"}}
+./middleware/anthropic_test.go:191:                                             {"type": "tool_result", "tool_use_id": "call_123", "content": "Sunny, 22°C"}
+./middleware/anthropic_test.go:284:                     name: "tool_use missing id error",
+./middleware/anthropic_test.go:290:                                             {"type": "tool_use", "name": "test"}
+./middleware/anthropic_test.go:298:                                     Message: "tool_use block missing required 'id' field",
+./middleware/anthropic_test.go:1037:    // Should have 3 blocks: server_tool_use + web_search_tool_result + text
+./middleware/anthropic_test.go:1042:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:1043:            t.Errorf("expected first block type 'server_tool_use', got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:1053:            t.Errorf("tool_use_id mismatch: %q != %q", result.Content[1].ToolUseID, result.Content[0].ID)
+./middleware/anthropic_test.go:1157:    // Success path: 10 events (3 blocks: server_tool_use, web_search_tool_result, text with delta)
+./middleware/anthropic_test.go:1160:            "content_block_start", // server_tool_use
+./middleware/anthropic_test.go:1208:                            Type:  "server_tool_use",
+./middleware/anthropic_test.go:1253:            "content_block_start", // server_tool_use (index 0)
+./middleware/anthropic_test.go:1289:    // Verify content_block_start for server_tool_use (event index 1)
+./middleware/anthropic_test.go:1292:            t.Fatalf("failed to parse server_tool_use start: %v", err)
+./middleware/anthropic_test.go:1297:    if toolStart.ContentBlock.Type != "server_tool_use" {
+./middleware/anthropic_test.go:1298:            t.Errorf("expected type 'server_tool_use', got %q", toolStart.ContentBlock.Type)
+./middleware/anthropic_test.go:1399:    // Should have exactly 2 blocks: server_tool_use + web_search_tool_result
+./middleware/anthropic_test.go:1404:    // Block 0: server_tool_use
+./middleware/anthropic_test.go:1405:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:1406:            t.Errorf("expected 'server_tool_use', got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:1425:            t.Errorf("expected tool_use_id %q, got %q", expectedToolID, result.Content[1].ToolUseID)
+./middleware/anthropic_test.go:1475:    // Error response has 2 blocks: server_tool_use + web_search_tool_result
+./middleware/anthropic_test.go:1477:    //   content_block_start(server_tool_use), content_block_stop,
+./middleware/anthropic_test.go:1500:    // Verify the server_tool_use block
+./middleware/anthropic_test.go:1503:            t.Fatalf("failed to parse server_tool_use start: %v", err)
+./middleware/anthropic_test.go:1505:    if toolStart.ContentBlock.Type != "server_tool_use" {
+./middleware/anthropic_test.go:1506:            t.Errorf("expected 'server_tool_use', got %q", toolStart.ContentBlock.Type)
+./middleware/anthropic_test.go:2030:    // Error response: server_tool_use + web_search_tool_result with error
+./middleware/anthropic_test.go:2034:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:2035:            t.Errorf("expected 'server_tool_use', got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:2360:    if result.Content[0].Type != "server_tool_use" {
+./middleware/anthropic_test.go:2361:            t.Fatalf("expected server_tool_use first, got %q", result.Content[0].Type)
+./middleware/anthropic_test.go:2368:            if block.Type == "tool_use" && block.Name == "get_weather" {
+./middleware/anthropic_test.go:2369:                    t.Fatalf("did not expect get_weather tool_use in mixed web_search-preferred path: %+v", result.Content)
+./middleware/anthropic_test.go:2424:                                            ID: "call_ws_tool_use",
+./middleware/anthropic_test.go:2465:    if result.StopReason != "tool_use" {
+./middleware/anthropic_test.go:2466:            t.Fatalf("expected stop_reason tool_use, got %q", result.StopReason)
+./middleware/anthropic_test.go:2469:            t.Fatalf("expected server blocks + tool_use, got %d blocks", len(result.Content))
+./middleware/anthropic_test.go:2472:    if last.Type != "tool_use" {
+./middleware/anthropic_test.go:2473:            t.Fatalf("expected final block tool_use, got %q", last.Type)
+./middleware/anthropic_test.go:2618:            if block.Type == "server_tool_use" {
+./middleware/anthropic_test.go:2626:            t.Fatalf("expected two search iterations, got server_tool_use=%d web_search_tool_result=%d", serverToolUses, webResults)
+./middleware/anthropic_test.go:2800:                                                    ID: "call_ws_stream_tool_use",
+./middleware/anthropic_test.go:2865:                    if start.ContentBlock.Type == "tool_use" && start.ContentBlock.Name == "get_weather" {
+./middleware/anthropic_test.go:2874:    if messageDelta.Delta.StopReason != "tool_use" {
+./middleware/anthropic_test.go:2875:            t.Fatalf("expected stop_reason tool_use, got %q", messageDelta.Delta.StopReason)
+./middleware/anthropic_test.go:2878:            t.Fatal("expected tool_use content block for get_weather")
+./middleware/anthropic.go:91:// Anthropic-format response (server_tool_use + web_search_tool_result + text).
+./middleware/anthropic.go:283:                          Type:  "server_tool_use",
+./middleware/anthropic.go:348:                  Type:  "server_tool_use",
+./middleware/anthropic.go:786:                          Type:  "server_tool_use",
+./anthropic/anthropic_test.go:204:                                              Type:  "tool_use",
+./anthropic/anthropic_test.go:341:                                              Type:  "tool_use",
+./anthropic/anthropic_test.go:680:                                              Type: "tool_use",
+./anthropic/anthropic_test.go:690:              t.Fatal("expected error for missing tool_use id")
+./anthropic/anthropic_test.go:692:      if err.Error() != "tool_use block missing required 'id' field" {
+./anthropic/anthropic_test.go:706:                                              Type: "tool_use",
+./anthropic/anthropic_test.go:716:              t.Fatal("expected error for missing tool_use name")
+./anthropic/anthropic_test.go:718:      if err.Error() != "tool_use block missing required 'name' field" {
+./anthropic/anthropic_test.go:806:      if result.Content[0].Type != "tool_use" {
+./anthropic/anthropic_test.go:807:              t.Errorf("expected type 'tool_use', got %q", result.Content[0].Type)
+./anthropic/anthropic_test.go:815:      if result.StopReason != "tool_use" {
+./anthropic/anthropic_test.go:816:              t.Errorf("expected stop_reason 'tool_use', got %q", result.StopReason)
+./anthropic/anthropic_test.go:856:              {"stop", true, "tool_use"},
+./anthropic/anthropic_test.go:1021:                             if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1036:             t.Error("expected tool_use content_block_start event")
+./anthropic/anthropic_test.go:1044:// model emits a thinking block followed directly by a tool_use block (with no
+./anthropic/anthropic_test.go:1046:// block and increments the content index before opening the tool_use block.
+./anthropic/anthropic_test.go:1047:// Previously, the converter reused contentIndex=0 for the tool_use block,
+./anthropic/anthropic_test.go:1098:     // Expect: content_block_stop(index=0), content_block_start(tool_use, index=1),
+./anthropic/anthropic_test.go:1114:                     if start, ok := e.Data.(ContentBlockStartEvent); ok && start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1128:             t.Fatal("expected content_block_start for tool_use block")
+./anthropic/anthropic_test.go:1131:             t.Errorf("expected tool_use block at index 1, got %+v", toolStart.Data)
+./anthropic/anthropic_test.go:1140:             t.Error("expected content_block_stop for tool_use block (index 1)")
+./anthropic/anthropic_test.go:1225:     // Verify no tool_use block was started (since marshal failed before block start)
+./anthropic/anthropic_test.go:1230:                             if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1238:             t.Error("expected no tool_use block when arguments cannot be marshaled")
+./anthropic/anthropic_test.go:1277:     // Count tool_use blocks - should only have 1 (the valid one)
+./anthropic/anthropic_test.go:1283:                             if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1301:             t.Errorf("expected 1 tool_use block, got %d", toolStartCount)
+./anthropic/anthropic_test.go:1482:     t.Run("tool_use block start includes empty input object", func(t *testing.T) {
+./anthropic/anthropic_test.go:1507:                                     if start.ContentBlock.Type == "tool_use" {
+./anthropic/anthropic_test.go:1519:                                                     t.Error("content_block_start for tool_use should include 'input' field")
+./anthropic/anthropic_test.go:1536:                     t.Error("expected tool_use content_block_start event")
+./anthropic/anthropic_test.go:1715:                             Type:  "server_tool_use",
+./anthropic/anthropic.go:117:   Type string `json:"type"` // text, image, tool_use, tool_result, thinking, server_tool_use, web_search_tool_result
+./anthropic/anthropic.go:128:   // For tool_use and server_tool_use blocks
+./anthropic/anthropic.go:134:   ToolUseID string `json:"tool_use_id,omitempty"`
+./anthropic/anthropic.go:190:   DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
+./anthropic/anthropic.go:457:           case "tool_use":
+./anthropic/anthropic.go:460:                           logutil.Trace("anthropic: tool_use block missing id", "role", role)
+./anthropic/anthropic.go:461:                           return nil, errors.New("tool_use block missing required 'id' field")
+./anthropic/anthropic.go:464:                           logutil.Trace("anthropic: tool_use block missing name", "role", role)
+./anthropic/anthropic.go:465:                           return nil, errors.New("tool_use block missing required 'name' field")
+./anthropic/anthropic.go:496:           case "server_tool_use":
+./anthropic/anthropic.go:542:           "tool_use", toolUseBlocks,
+./anthropic/anthropic.go:544:           "server_tool_use", serverToolUseBlocks,
+./anthropic/anthropic.go:675:                   Type:  "tool_use",
+./anthropic/anthropic.go:701:           return "tool_use"
+./anthropic/anthropic.go:866:           // Close thinking block if still open (thinking → tool_use without text in between)
+./anthropic/anthropic.go:902:                                   Type:  "tool_use",
+./anthropic/anthropic.go:1163:  if block.Type == "tool_use" || block.Type == "tool_result" {
+./anthropic/trace.go:181:       case "tool_use", "server_tool_use":
+./anthropic/trace.go:186:               out["tool_use_id"] = block["tool_use_id"]
+./docs/api/anthropic-compatibility.mdx:164:    if block.type == 'tool_use':
+./docs/api/anthropic-compatibility.mdx:200:  if (block.type === "tool_use") {
+./docs/api/anthropic-compatibility.mdx:310:  - [x] `tool_use` blocks
+./docs/api/anthropic-compatibility.mdx:330:- [x] `content` (text, tool_use, thinking blocks)
+./docs/api/anthropic-compatibility.mdx:331:- [x] `stop_reason` (end_turn, max_tokens, tool_use)
+./x/mlxrunner/client.go:216:func (c *Client) Chat(ctx context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./x/mlxrunner/client.go:220:func (c *Client) ApplyChatTemplate(ctx context.Context, req llm.ChatRequest) (string, error) {
+./x/imagegen/server.go:382:func (s *Server) Chat(ctx context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./x/imagegen/server.go:386:func (s *Server) ApplyChatTemplate(ctx context.Context, req llm.ChatRequest) (string, error) {
+./integration/audio_test.go:55: req := api.ChatRequest{
+./integration/audio_test.go:94:                 req := api.ChatRequest{
+./integration/generate_jinja_test.go:42:                chatRender := debugChatRender(ctx, t, client, api.ChatRequest{
+./integration/generate_jinja_test.go:220:func debugChatRender(ctx context.Context, t *testing.T, client *api.Client, req api.ChatRequest) string {
+./integration/chat_cases_test.go:62:func chatModelRequest(model string) (api.ChatRequest, []string) {
+./integration/chat_cases_test.go:63:    req := api.ChatRequest{
+./integration/concurrency_test.go:25:   req, resp := ChatRequests()
+./integration/concurrency_test.go:174:                  reqs, resps := ChatRequests()
+./integration/create_test.go:186:       chatReq := &api.ChatRequest{
+./integration/imagegen_test.go:86:                      chatReq := api.ChatRequest{
+./integration/context_test.go:37:       req := api.ChatRequest{
+./integration/context_test.go:101:      req := api.ChatRequest{
+./integration/context_test.go:239:      req, resp := ChatRequests()
+./integration/context_test.go:304:      req := api.ChatRequest{
+./integration/vision_test.go:95:                        req := api.ChatRequest{
+./integration/vision_test.go:162:                       req := api.ChatRequest{
+./integration/vision_test.go:205:                       req := api.ChatRequest{
+./integration/vision_test.go:243:                       req := api.ChatRequest{
+./integration/vision_test.go:279:                       req := api.ChatRequest{
+./integration/vision_test.go:324:                       req := api.ChatRequest{
+./integration/vision_test.go:363:                       req := api.ChatRequest{
+./integration/llm_image_test.go:35:     req := api.ChatRequest{
+./integration/api_test.go:207:  req := api.ChatRequest{
+./integration/api_test.go:554:  req := api.ChatRequest{
+./integration/thinking_test.go:31:                      req := api.ChatRequest{
+./integration/thinking_test.go:103:                     req := api.ChatRequest{
+./integration/tools_test.go:96: req := api.ChatRequest{
+./integration/utils_test.go:352:func ChatTestHelper(ctx context.Context, t *testing.T, req api.ChatRequest, anyResp []string) {
+./integration/utils_test.go:499:func DoChat(ctx context.Context, t *testing.T, client *api.Client, req api.ChatRequest, anyResp []string, initialTimeout, streamTimeout time.Duration) *api.Message {
+./integration/utils_test.go:576:func ChatRequests() ([]api.ChatRequest, [][]string) {
+./integration/utils_test.go:578:        reqs := make([]api.ChatRequest, len(genReqs))
+./integration/quantization_test.go:79:                          chatReq := api.ChatRequest{
+./integration/basic_test.go:20: req := api.ChatRequest{
+./integration/basic_test.go:45: req := api.ChatRequest{
+./integration/basic_test.go:87: req := api.ChatRequest{
+./integration/basic_test.go:129:        req := api.ChatRequest{
+./integration/tools_stress_test.go:325: req := api.ChatRequest{
+./integration/tools_stress_test.go:401: req := api.ChatRequest{
+./llm/llama_server_test.go:329: err := runner.Chat(t.Context(), ChatRequest{
+./llm/llama_server_test.go:405:                         err = runner.Chat(t.Context(), ChatRequest{
+./llm/server.go:65:     Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) error
+./llm/server.go:66:     ApplyChatTemplate(ctx context.Context, req ChatRequest) (string, error)
+./llm/server.go:232:type ChatRequest struct {
+./llm/llama_server.go:1797:func (s *llamaServerRunner) ApplyChatTemplate(ctx context.Context, req ChatRequest) (string, error) {
+./llm/llama_server.go:1798:     data, err := s.llamaServerChatRequest(req, false)
+./llm/llama_server.go:1843:func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) error {
+./llm/llama_server.go:1868:     lsReq, err := s.llamaServerChatRequest(req, true)
+./llm/llama_server.go:2095:func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool) (map[string]any, error) {
+./cmd/cmd.go:1811:      req := &api.ChatRequest{
+./cmd/tui/chat/debug.go:19:     request api.ChatRequest
+./cmd/tui/chat/debug.go:168:func (m chatModel) requestPreview() (api.ChatRequest, int) {
+./cmd/tui/chat/debug.go:171:    req := m.previewChatRequest(opts, messages)
+./cmd/tui/chat/debug.go:194:func (m chatModel) previewChatRequest(opts coreagent.RunOptions, messages []api.Message) api.ChatRequest {
+./cmd/tui/chat/debug.go:207:    req := api.ChatRequest{
+./cmd/tui/chat/input_test.go:316:                       request: api.ChatRequest{
+./cmd/tui/chat/input_test.go:349:                       request: api.ChatRequest{Model: "llama3.2"},
+./cmd/tui/chat/test_helpers_test.go:21: requests []*api.ChatRequest
+./cmd/tui/chat/test_helpers_test.go:29:func (chatTestClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./cmd/tui/chat/test_helpers_test.go:39:func (c *chatCaptureClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./cmd/tui/chat/test_helpers_test.go:50:func (c *chatToolLoopClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./api/types_test.go:81:                 var dec ChatRequest
+./api/examples/chat/main.go:37: req := &api.ChatRequest{
+./api/client.go:293:// Chat generates the next message in a chat. [ChatRequest] may contain a
+./api/client.go:297:func (c *Client) Chat(ctx context.Context, req *ChatRequest, fn ChatResponseFunc) error {
+./api/types.go:146:// ChatRequest describes a request sent by [Client.Chat].
+./api/types.go:147:type ChatRequest struct {
+./api/types.go:215:     // original model output when ChatRequest.Think is enabled.
+./api/types.go:922:     // original model output when ChatRequest.Think is enabled.
+./agent/session_test.go:18:     requests  []*api.ChatRequest
+./agent/session_test.go:22:func (c *fakeClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./agent/session_test.go:112:func (c cancelAfterToolCallClient) Chat(ctx context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./agent/session_test.go:472:func TestSessionChatRequestMatchesRunRequest(t *testing.T) {
+./agent/session_test.go:490:    want := buildChatRequest(opts, opts.NewMessages, registry.Tools())
+./agent/session_test.go:507:            t.Fatalf("ChatRequest mismatch\ngot:  %s\nwant: %s", gotJSON, wantJSON)
+./agent/session.go:19:  Chat(context.Context, *api.ChatRequest, api.ChatResponseFunc) error
+./agent/session.go:393: req := buildChatRequest(opts, messages, tools)
+./agent/session.go:443:func buildChatRequest(opts RunOptions, messages []api.Message, tools api.Tools) api.ChatRequest {
+./agent/session.go:456: req := api.ChatRequest{
+./agent/compactor.go:236:       chatReq := &api.ChatRequest{
+./agent/compactor_test.go:15:   requests  []*api.ChatRequest
+./agent/compactor_test.go:18:func (c *scriptedCompactionClient) Chat(_ context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./agent/skill_activation_test.go:13:type skillTestClient struct{ requests []*api.ChatRequest }
+./agent/skill_activation_test.go:15:func (c *skillTestClient) Chat(_ context.Context, req *api.ChatRequest, fn api.ChatResponseFunc) error {
+./server/routes_harmony_streaming_test.go:296:                  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_harmony_streaming_test.go:446:  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_harmony_streaming_test.go:630:                  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_cloud_test.go:68:               w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:60:    ChatRequest   llm.ChatRequest
+./server/routes_generate_test.go:62:    ChatFn        func(context.Context, llm.ChatRequest, func(llm.ChatResponse)) error
+./server/routes_generate_test.go:64:    TemplateFn    func(context.Context, llm.ChatRequest) (string, error)
+./server/routes_generate_test.go:78:func (m *mockRunner) Chat(ctx context.Context, r llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/routes_generate_test.go:79:    m.ChatRequest = r
+./server/routes_generate_test.go:87:func (m *mockRunner) ApplyChatTemplate(ctx context.Context, r llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:88:    m.ChatRequest = r
+./server/routes_generate_test.go:281:           ChatFn: func(_ context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/routes_generate_test.go:300:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:318:   if len(mock.ChatRequest.Messages) != 1 || mock.ChatRequest.Messages[0].Content != "hello" {
+./server/routes_generate_test.go:319:           t.Fatalf("chat_template request messages = %#v", mock.ChatRequest.Messages)
+./server/routes_generate_test.go:321:   if !mock.ChatRequest.Shift {
+./server/routes_generate_test.go:333:           TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:343:           ChatFn: func(_ context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/routes_generate_test.go:358:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:375:   if len(mock.ChatRequest.Messages) != 2 {
+./server/routes_generate_test.go:376:           t.Fatalf("chat_template request messages = %#v", mock.ChatRequest.Messages)
+./server/routes_generate_test.go:378:   if !cmp.Equal(mock.ChatRequest.Messages[0], api.Message{Role: "system", Content: "sys"}) {
+./server/routes_generate_test.go:379:           t.Fatalf("first message = %#v", mock.ChatRequest.Messages[0])
+./server/routes_generate_test.go:381:   if !cmp.Equal(mock.ChatRequest.Messages[1], api.Message{Role: "user", Content: "new ask"}) {
+./server/routes_generate_test.go:382:           t.Fatalf("second message = %#v", mock.ChatRequest.Messages[1])
+./server/routes_generate_test.go:404:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:414:   if mock.ChatRequest.Messages != nil {
+./server/routes_generate_test.go:415:           t.Fatalf("expected rendered route, chat_template request was recorded: %#v", mock.ChatRequest)
+./server/routes_generate_test.go:440:   w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:483:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:523:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:555:                   TemplateFn: func(context.Context, llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:583:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:625:                   TemplateFn: func(_ context.Context, req llm.ChatRequest) (string, error) {
+./server/routes_generate_test.go:716:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:846:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:865:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:879:           w := createRequest(t, s.ChatHandler, api.ChatRequest{})
+./server/routes_generate_test.go:904:           w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:918:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:998:           w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1028:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1049:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1070:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1133:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1257:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1380:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1425:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:1451:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2180:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2200:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2316:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2439:  testChatRequest := func(t *testing.T, name string, userContent string, modelResponse string, expectedThinking string, expectedContent string, think bool) {
+./server/routes_generate_test.go:2453:                  req := api.ChatRequest{
+./server/routes_generate_test.go:2485:  testChatRequest(t, "basic thinking response",
+./server/routes_generate_test.go:2492:  testChatRequest(t, "thinking with multiple sentences",
+./server/routes_generate_test.go:2499:  testChatRequest(t, "no thinking content",
+./server/routes_generate_test.go:2540:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2632:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2735:          w := createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_generate_test.go:2919:                  w = createRequest(t, s.ChatHandler, api.ChatRequest{
+./server/routes_debug_test.go:290:              request         api.ChatRequest
+./server/routes_debug_test.go:297:                      request: api.ChatRequest{
+./server/routes_debug_test.go:310:                      request: api.ChatRequest{
+./server/routes_debug_test.go:321:                      request: api.ChatRequest{
+./server/routes_debug_test.go:335:                      request: api.ChatRequest{
+./server/routes_debug_test.go:352:                      request: api.ChatRequest{
+./server/sched_test.go:2127:func (s *mockLlm) Chat(ctx context.Context, req llm.ChatRequest, fn func(llm.ChatResponse)) error {
+./server/sched_test.go:2131:func (s *mockLlm) ApplyChatTemplate(ctx context.Context, req llm.ChatRequest) (string, error) {
+./server/routes.go:569:                         nativeReq, err := prepareNativeChatRequest(c.Request.Context(), m, r, opts, llm.ChatRequest{
+./server/routes.go:2392:func writeChatResponse(c *gin.Context, req api.ChatRequest, ch chan any) {
+./server/routes.go:2448:        var req api.ChatRequest
+./server/routes.go:2941:func prepareNativeChatRequest(ctx context.Context, m *Model, r llm.LlamaServer, opts *api.Options, nativeReq llm.ChatRequest, truncate bool) (llm.ChatRequest, error) {
+./server/routes.go:2947:func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model, r llm.LlamaServer, opts *api.Options, msgs []api.Message, checkpointStart, checkpointLoaded time.Time) {
+./server/routes.go:2949:        nativeReq, err := prepareNativeChatRequest(c.Request.Context(), m, r, opts, llm.ChatRequest{
+./server/routes.go:3038:func truncateNativeChatMessages(ctx context.Context, m *Model, r llm.LlamaServer, opts *api.Options, req llm.ChatRequest, truncate bool) ([]api.Message, error) {
+./openai/responses.go:404:// FromResponsesRequest converts a ResponsesRequest to api.ChatRequest
+./openai/responses.go:405:func FromResponsesRequest(r ResponsesRequest) (*api.ChatRequest, error) {
+./openai/responses.go:561:      return &api.ChatRequest{
+./openai/openai_test.go:32:func TestFromChatRequest_Basic(t *testing.T) {
+./openai/openai_test.go:40:     result, err := FromChatRequest(req)
+./openai/openai_test.go:58:func TestFromChatRequest_ReasoningEffort(t *testing.T) {
+./openai/openai_test.go:83:                     result, err := FromChatRequest(req)
+./openai/openai_test.go:109:func TestFromChatRequest_WithImage(t *testing.T) {
+./openai/openai_test.go:128:    result, err := FromChatRequest(req)
+./openai/openai_test.go:288:func TestFromChatRequest_WithLogprobs(t *testing.T) {
+./openai/openai_test.go:300:    result, err := FromChatRequest(req)
+./openai/openai_test.go:314:func TestFromChatRequest_LogprobsDefault(t *testing.T) {
+./openai/openai_test.go:322:    result, err := FromChatRequest(req)
+./openai/openai_test.go:792:func TestFromChatRequest_TopLogprobsRange(t *testing.T) {
+./openai/openai_test.go:816:                    result, err := FromChatRequest(req)
+./openai/openai.go:481:// FromChatRequest converts a ChatCompletionRequest to api.ChatRequest
+./openai/openai.go:482:func FromChatRequest(r ChatCompletionRequest) (*api.ChatRequest, error) {
+./openai/openai.go:651: return &api.ChatRequest{
+./openai/openai.go:860:// FromTranscriptionRequest converts a transcription request into a ChatRequest
+./openai/openai.go:862:func FromTranscriptionRequest(r TranscriptionRequest) (*api.ChatRequest, error) {
+./openai/openai.go:874: return &api.ChatRequest{
+./middleware/anthropic_test.go:42:              req  api.ChatRequest
+./middleware/anthropic_test.go:46:      var capturedRequest *api.ChatRequest
+./middleware/anthropic_test.go:59:                      req: api.ChatRequest{
+./middleware/anthropic_test.go:78:                      req: api.ChatRequest{
+./middleware/anthropic_test.go:101:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:126:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:155:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:195:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:227:                     req: api.ChatRequest{
+./middleware/anthropic_test.go:2491:            var followupReq api.ChatRequest
+./middleware/anthropic.go:97:   chatReq        *api.ChatRequest          // converted Ollama request (for followup calls)
+./middleware/anthropic.go:543:  followUp := api.ChatRequest{
+./middleware/anthropic.go:559:          "req", anthropic.TraceChatRequest(&followUp),
+./middleware/openai_test.go:376:                req  api.ChatRequest
+./middleware/openai_test.go:380:        var capturedRequest *api.ChatRequest
+./middleware/openai_test.go:391:                        req: api.ChatRequest{
+./middleware/openai_test.go:423:                        req: api.ChatRequest{
+./middleware/openai_test.go:462:                        req: api.ChatRequest{
+./middleware/openai_test.go:505:                        req: api.ChatRequest{
+./middleware/openai_test.go:538:                        req: api.ChatRequest{
+./middleware/openai_test.go:577:                        req: api.ChatRequest{
+./middleware/openai_test.go:617:                        req: api.ChatRequest{
+./middleware/openai_test.go:656:                        req: api.ChatRequest{
+./middleware/openai_test.go:697:                        req: api.ChatRequest{
+./middleware/openai_test.go:743:                        req: api.ChatRequest{
+./middleware/openai_test.go:808:                        req: api.ChatRequest{
+./middleware/openai_test.go:1587:                       var capturedRequest *api.ChatRequest
+./middleware/openai.go:424:             chatReq, err := openai.FromChatRequest(req)
+./anthropic/anthropic.go:296:// FromMessagesRequest converts an Anthropic MessagesRequest to an Ollama api.ChatRequest
+./anthropic/anthropic.go:297:func FromMessagesRequest(r MessagesRequest) (*api.ChatRequest, error) {
+./anthropic/anthropic.go:403:   convertedRequest := &api.ChatRequest{
+./anthropic/anthropic.go:411:   logutil.Trace("anthropic: converted request", "req", TraceChatRequest(convertedRequest))
+./anthropic/trace.go:252:// TraceChatRequest returns a compact trace representation of an Ollama ChatRequest.
+./anthropic/trace.go:253:func TraceChatRequest(req *api.ChatRequest) map[string]any {
+./docs/openapi.yaml:262:    ChatRequest:
+./docs/openapi.yaml:1036:              $ref: "#/components/schemas/ChatRequest"
+./app/ui/responses/types.go:120:type ChatRequest struct {
+./app/ui/app/src/api.ts:10:  ChatRequest,
+./app/ui/app/src/api.ts:228:      new ChatRequest({
+./app/ui/app/codegen/gotypes.gen.ts:506:export class ChatRequest {
+./app/ui/ui.go:648:     var req responses.ChatRequest
+./app/ui/ui.go:916:             chatReq, err := s.buildChatRequest(reqChat, req.Model, thinkValue, availableTools)
+./app/ui/ui.go:1705:// buildChatRequest converts store.Chat to api.ChatRequest
+./app/ui/ui.go:1706:func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, availableTools []map[string]any) (*api.ChatRequest, error) {
+./app/ui/ui.go:1783:    req := &api.ChatRequest{
+./middleware/anthropic_test.go:901:     // First event should be message_start
+./middleware/anthropic_test.go:902:     if events[0].event != "message_start" {
+./middleware/anthropic_test.go:903:             t.Errorf("first event should be message_start, got %q", events[0].event)
+./middleware/anthropic_test.go:1159:            "message_start",
+./middleware/anthropic_test.go:1252:            "message_start",
+./middleware/anthropic_test.go:1274:    // Verify message_start content
+./middleware/anthropic_test.go:1277:            t.Fatalf("failed to parse message_start: %v", err)
+./middleware/anthropic_test.go:1286:            t.Errorf("expected empty content in message_start, got %d blocks", len(msgStart.Message.Content))
+./middleware/anthropic_test.go:1476:    // Expected events: message_start,
+./middleware/anthropic_test.go:1481:            "message_start",
+./middleware/anthropic_test.go:2138:    if countEventsByName(events, "message_start") != 1 {
+./middleware/anthropic_test.go:2139:            t.Fatalf("expected exactly one message_start, got %d", countEventsByName(events, "message_start"))
+./middleware/anthropic_test.go:2846:    if countEventsByName(events, "message_start") != 1 {
+./middleware/anthropic_test.go:2847:            t.Fatalf("expected exactly one message_start, got %d", countEventsByName(events, "message_start"))
+./middleware/anthropic.go:632:  if err := writeSSE(w.ResponseWriter, "message_start", anthropic.MessageStartEvent{
+./middleware/anthropic.go:633:          Type: "message_start",
+./anthropic/anthropic_test.go:937:      // Should have message_start, content_block_start, content_block_delta
+./anthropic/anthropic_test.go:938:      if events1[0].Event != "message_start" {
+./anthropic/anthropic_test.go:939:              t.Errorf("expected first event 'message_start', got %q", events1[0].Event)
+./anthropic/anthropic_test.go:1062:     // Should have: message_start, content_block_start(thinking), content_block_delta(thinking)
+./anthropic/anthropic_test.go:1066:     if events1[0].Event != "message_start" {
+./anthropic/anthropic_test.go:1067:             t.Errorf("expected first event 'message_start', got %q", events1[0].Event)
+./anthropic/anthropic_test.go:1175:             "message_start",
+./anthropic/anthropic.go:228:   Type    string           `json:"type"` // "message_start"
+./anthropic/anthropic.go:761:                   Event: "message_start",
+./anthropic/anthropic.go:763:                           Type: "message_start",
+./docs/api/anthropic-compatibility.mdx:336:- [x] `message_start`
+(.venv) root@vmi3208979:~/ollama (main) $

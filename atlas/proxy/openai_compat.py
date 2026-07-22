@@ -23,6 +23,36 @@ def openai_error(message: str, code: str, status: int) -> dict[str, Any]:
     }
 
 
+def anthropic_error(message: str, status: int) -> dict[str, Any]:
+    """Create an Anthropic-shaped error response.
+
+    Maps HTTP status codes to Anthropic error types:
+    - 400 -> invalid_request_error
+    - 401 -> authentication_error
+    - 403 -> permission_error
+    - 404 -> not_found_error
+    - 429 -> rate_limit_error
+    - 500+ -> api_error
+    """
+    error_types = {
+        400: "invalid_request_error",
+        401: "authentication_error",
+        403: "permission_error",
+        404: "not_found_error",
+        429: "rate_limit_error",
+        503: "overloaded_error",
+    }
+    error_type = error_types.get(status, "api_error")
+
+    return {
+        "type": "error",
+        "error": {
+            "type": error_type,
+            "message": message,
+        },
+    }
+
+
 def normalize_messages(messages: Any) -> list[dict[str, Any]]:
     # Accept standard OpenAI message arrays while preserving tool protocol
     # fields. Flatten text-part content only; dropping tool_calls here breaks
@@ -210,10 +240,23 @@ def anthropic_messages_to_openai(body: dict[str, Any]) -> list[dict[str, Any]]:
             messages.append({"role": "assistant" if role == "assistant" else "user", "content": str(content)})
             continue
 
+        # Preserve thinking blocks as text content. NVIDIA models can potentially
+        # use reasoning content even if they don't have native thinking support.
+        # We include thinking as part of the assistant's content so it's not lost.
+        thinking_parts = [str(block.get("thinking") or "") for block in content
+                        if isinstance(block, dict) and block.get("type") == "thinking"]
+        thinking_text = "\n\n".join(thinking_parts) if thinking_parts else ""
+
         blocks = [block for block in content if isinstance(block, dict) and block.get("type") != "thinking"]
         text_parts = [str(block.get("text") or "") for block in blocks if block.get("type") == "text"]
         tool_uses = [block for block in blocks if block.get("type") == "tool_use"]
         tool_results = [block for block in blocks if block.get("type") == "tool_result"]
+
+        # Prepend thinking to text if present
+        if thinking_text and text_parts:
+            text_parts = [thinking_text + "\n\n" + text_parts[0]] + text_parts[1:]
+        elif thinking_text:
+            text_parts = [thinking_text]
 
         if role == "assistant" and tool_uses:
             messages.append(
@@ -391,16 +434,27 @@ def sanitize_openai_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def anthropic_openai_payload(body: dict[str, Any], upstream_model: str) -> dict[str, Any]:
+    # Anthropic uses 'max_tokens' but calls it 'max_tokens' - preserve it directly.
+    # Default to 1024 if not specified.
+    max_tokens = body.get("max_tokens")
+    if max_tokens is None:
+        max_tokens = 1024
+
     payload: dict[str, Any] = {
         "model": upstream_model,
         "messages": anthropic_messages_to_openai(body),
-        "max_tokens": body.get("max_tokens", 1024),
+        "max_tokens": max_tokens,
         "temperature": body.get("temperature", 0.7),
         # Honor the caller's stream flag so the upstream request actually
         # streams when the client asked for streaming. /v1/messages previously
         # ignored this and always buffered via handle_non_stream.
         "stream": bool(body.get("stream", False)),
     }
+    # Map top_p from Anthropic if present
+    top_p = body.get("top_p")
+    if top_p is not None:
+        payload["top_p"] = _clamp(top_p, 0.0, 1.0, 1.0)
+
     tools = anthropic_tools_to_openai(body.get("tools"))
     if tools:
         payload["tools"] = tools
