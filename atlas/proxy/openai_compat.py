@@ -459,6 +459,11 @@ def anthropic_openai_payload(body: dict[str, Any], upstream_model: str) -> dict[
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = anthropic_tool_choice_to_openai(body.get("tool_choice")) or "auto"
+
+    # Add stream_options for usage tracking when streaming
+    if payload.get("stream"):
+        payload["stream_options"] = {"include_usage": True}
+
     # Sanitize (clamp sampling params, drop unsupported fields) before the
     # payload hits NVIDIA. Anthropic clients can still send out-of-range
     # temperature; clamp it instead of letting NVIDIA 400 the request.

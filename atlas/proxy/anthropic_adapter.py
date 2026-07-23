@@ -241,7 +241,7 @@ class StreamState:
     thinking_started: bool = False
     thinking_done: bool = False
     text_started: bool = False
-    tool_calls_sent: dict[str, bool] = field(default_factory=dict)
+    tool_calls_started: dict[str, bool] = field(default_factory=dict)  # track which tool calls have had their start event
 
 
 class StreamConverter:
@@ -302,42 +302,20 @@ class StreamConverter:
         if not delta:
             return events
 
-        # Handle thinking delta (if backend supports it)
+        # Handle thinking delta - STRIP IT for Claude Code compatibility.
+        # Claude Code doesn't support thinking blocks in the Anthropic API.
+        # We silently drop thinking content instead of emitting it.
         thinking = delta.get("thinking")
         if thinking:
-            # Close text block if open
-            if state.text_started and not state.thinking_done:
+            # Just mark thinking as seen but don't emit any events
+            # This closes any open text block before content arrives
+            if state.text_started:
                 events.append(self._content_block_stop())
                 state.content_index += 1
                 state.text_started = False
-
-            # Start thinking block if not started
-            if not state.thinking_started:
-                state.thinking_started = True
-                events.append({
-                    "event": "content_block_start",
-                    "data": {
-                        "type": "content_block_start",
-                        "index": state.content_index,
-                        "content_block": {
-                            "type": "thinking",
-                            "thinking": "",
-                        },
-                    },
-                })
-
-            # Emit thinking delta
-            events.append({
-                "event": "content_block_delta",
-                "data": {
-                    "type": "content_block_delta",
-                    "index": state.content_index,
-                    "delta": {
-                        "type": "thinking_delta",
-                        "thinking": thinking,
-                    },
-                },
-            })
+            state.thinking_started = True
+            state.thinking_done = True
+            # Skip emitting thinking blocks - they're not supported by Claude Code
 
         # Handle text delta
         content = delta.get("content")
@@ -380,10 +358,14 @@ class StreamConverter:
         tool_calls = delta.get("tool_calls", [])
         for tc in tool_calls:
             tc_id = tc.get("id")
-            if not tc_id or state.tool_calls_sent.get(tc_id):
+            if not tc_id:
                 continue
 
-            state.tool_calls_sent[tc_id] = True
+            # Only skip if we've already sent the start event for this tool call
+            # But ALWAYS process arguments - they come in multiple chunks!
+            already_started = state.tool_calls_started.get(tc_id, False)
+            if not already_started:
+                state.tool_calls_started[tc_id] = True
 
             # Close open blocks before starting tool
             if state.thinking_started and not state.thinking_done:
@@ -397,21 +379,24 @@ class StreamConverter:
                 state.text_started = False
 
             func = tc.get("function", {})
-            events.append({
-                "event": "content_block_start",
-                "data": {
-                    "type": "content_block_start",
-                    "index": state.content_index,
-                    "content_block": {
-                        "type": "tool_use",
-                        "id": tc_id,
-                        "name": func.get("name", ""),
-                        "input": {},
-                    },
-                },
-            })
 
-            # Handle arguments
+            # Only send start event once per tool call
+            if not already_started:
+                events.append({
+                    "event": "content_block_start",
+                    "data": {
+                        "type": "content_block_start",
+                        "index": state.content_index,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": tc_id,
+                            "name": func.get("name", ""),
+                            "input": {},
+                        },
+                    },
+                })
+
+            # ALWAYS handle arguments - they come in multiple chunks!
             args = func.get("arguments", "")
             if args:
                 events.append({
@@ -444,7 +429,7 @@ class StreamConverter:
                 state.input_tokens = usage.get("prompt_tokens", state.input_tokens)
                 state.output_tokens = usage.get("completion_tokens", 0)
 
-            stop_reason = _map_stop_reason(finish_reason, len(state.tool_calls_sent) > 0)
+            stop_reason = _map_stop_reason(finish_reason, len(state.tool_calls_started) > 0)
 
             events.append({
                 "event": "message_delta",
@@ -582,7 +567,7 @@ async def convert_openai_stream_to_anthropic(
                 converter.state.input_tokens,
                 converter.state.output_tokens,
                 converter.state.input_tokens + converter.state.output_tokens,
-                len(converter.state.tool_calls_sent),
+                len(converter.state.tool_calls_started),
             )
         except Exception:
             pass
