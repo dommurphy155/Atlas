@@ -7,12 +7,15 @@ from .types import (
     Usage,
     ToolCall,
     ToolDefinition,
-    ThinkingBlock,
     Model,
     Provider,
     Capability,
     Logprobs,
     FinishReason,
+    BlockType,
+    RequestOptions,
+    ToolChoice,
+    ImageSource,
 )
 
 __all__ = [
@@ -23,10 +26,13 @@ __all__ = [
     "Usage",
     "ToolCall",
     "ToolDefinition",
-    "ThinkingBlock",
     "Model",
     "Provider",
     "Capability",
     "Logprobs",
     "FinishReason",
+    "BlockType",
+    "RequestOptions",
+    "ToolChoice",
+    "ImageSource",
 ]
