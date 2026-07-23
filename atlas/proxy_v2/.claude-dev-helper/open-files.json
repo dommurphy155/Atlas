@@ -1,8 +1,62 @@
 [
   {
-    "filePath": "/root/claude/atlas/proxy_v2/src/core/__init__.py",
-    "timestamp": 1784844669960,
+    "filePath": "/root/claude/atlas/proxy_v2/src/server.py",
+    "timestamp": 1784845286336,
     "focus": false,
-    "openLocation": 1
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/src/server.py",
+    "timestamp": 1784845317869,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/src/server.py",
+    "timestamp": 1784845328511,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/tests/__init__.py",
+    "timestamp": 1784845370407,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/tests/test_server.py",
+    "timestamp": 1784845378438,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/tests/test_protocols.py",
+    "timestamp": 1784845391762,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/tests/test_protocols.py",
+    "timestamp": 1784845417868,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/src/server.py",
+    "timestamp": 1784845437013,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/src/server.py",
+    "timestamp": 1784845443449,
+    "focus": false,
+    "openLocation": 0
+  },
+  {
+    "filePath": "/root/claude/atlas/proxy_v2/tests/test_protocols.py",
+    "timestamp": 1784845457143,
+    "focus": false,
+    "openLocation": 0
   }
 ]

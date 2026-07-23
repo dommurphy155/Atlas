@@ -112,54 +112,24 @@ class Provider(ABC):
 
     def __init__(self, config: ProviderConfig):
         self.config = config
-        self.name = config.name
+        self._name = config.name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def supported_models(self) -> list[str]:
+        return self.config.models or ["*"]
 
     @abstractmethod
-    async def chat(self, request: Request) -> ChatResponse:
-        """
-        Execute a non-streaming chat completion.
-
-        Args:
-            request: The internal request
-
-        Returns:
-            ChatResponse with the model's response
-
-        Raises:
-            ProviderError: On provider errors
-            ProviderTimeoutError: On timeout
-            ProviderAuthError: On authentication failure
-            ProviderRateLimitError: On rate limit
-        """
+    async def complete(self, request: Request) -> Response:
+        """Execute a non-streaming completion."""
         pass
 
     @abstractmethod
-    async def stream_chat(self, request: Request) -> StreamResponse:
-        """
-        Execute a streaming chat completion.
-
-        Args:
-            request: The internal request (with stream=True)
-
-        Returns:
-            StreamResponse with streaming iterator
-
-        Raises:
-            ProviderError: On provider errors
-            ProviderTimeoutError: On timeout
-            ProviderAuthError: On authentication failure
-            ProviderRateLimitError: On rate limit
-        """
-        pass
-
-    @abstractmethod
-    def supports_capability(self, capability: ProviderCapability) -> bool:
-        """Check if provider supports a capability."""
-        pass
-
-    @abstractmethod
-    def get_models(self) -> list[str]:
-        """Get list of available models for this provider."""
+    async def stream(self, request: Request) -> AsyncIterator[dict]:
+        """Execute a streaming completion. Yields event dicts."""
         pass
 
     async def close(self) -> None:
@@ -190,53 +160,33 @@ class MultiProvider(Provider):
         super().__init__(config)
         self.providers = providers
 
-    async def chat(self, request: Request) -> ChatResponse:
+    async def complete(self, request: Request) -> Response:
         """Try each provider until one succeeds."""
         last_error: Optional[Exception] = None
 
         for provider in self.providers:
             try:
-                return await provider.chat(request)
-            except ProviderRateLimitError as e:
-                # Don't retry rate limits immediately
-                last_error = e
-                continue
-            except ProviderError as e:
+                return await provider.complete(request)
+            except (ProviderRateLimitError, ProviderError) as e:
                 last_error = e
                 continue
 
         raise last_error or ProviderError("All providers failed", "multi")
 
-    async def stream_chat(self, request: Request) -> StreamResponse:
+    async def stream(self, request: Request) -> AsyncIterator[dict]:
         """Try each provider until one succeeds."""
         last_error: Optional[Exception] = None
 
         for provider in self.providers:
             try:
-                return await provider.stream_chat(request)
-            except ProviderRateLimitError as e:
-                last_error = e
-                continue
-            except ProviderError as e:
+                async for event in provider.stream(request):
+                    yield event
+                return
+            except (ProviderRateLimitError, ProviderError) as e:
                 last_error = e
                 continue
 
         raise last_error or ProviderError("All providers failed", "multi")
-
-    def supports_capability(self, capability: ProviderCapability) -> bool:
-        """Check if any provider supports the capability."""
-        return any(p.supports_capability(capability) for p in self.providers)
-
-    def get_models(self) -> list[str]:
-        """Get combined list of models."""
-        models = []
-        seen = set()
-        for provider in self.providers:
-            for model in provider.get_models():
-                if model not in seen:
-                    seen.add(model)
-                    models.append(model)
-        return models
 
 
 # Provider class registry

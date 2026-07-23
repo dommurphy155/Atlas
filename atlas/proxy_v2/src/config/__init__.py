@@ -46,9 +46,21 @@ class ProxyConfig:
     keepalive_interval: float = 15.0
     request_timeout: float = 300.0
 
+    # Auth
+    api_keys: list[str] = field(default_factory=list)
+
+    # NVIDIA
+    nvidia_api_key: str = ""
+    nvidia_base_url: str = ""
+    nvidia_model: str = ""
+
     @classmethod
     def from_env(cls) -> ProxyConfig:
         """Load configuration from environment variables."""
+        # Parse comma-separated API keys
+        api_keys_raw = os.getenv("ATLAS_API_KEYS", "")
+        api_keys = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
+
         return cls(
             server=ServerConfig(
                 host=os.getenv("ATLAS_PROXY_HOST", "127.0.0.1"),
@@ -68,6 +80,10 @@ class ProxyConfig:
             max_body_size=int(os.getenv("ATLAS_MAX_BODY_SIZE", str(256 * 1024 * 1024))),
             keepalive_interval=float(os.getenv("ATLAS_KEEPALIVE_INTERVAL", "15.0")),
             request_timeout=float(os.getenv("ATLAS_REQUEST_TIMEOUT", "300.0")),
+            api_keys=api_keys,
+            nvidia_api_key=os.getenv("NVIDIA_API_KEY", ""),
+            nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+            nvidia_model=os.getenv("ATLAS_NVIDIA_MODEL", "meta/llama-3.1-70b-instruct"),
         )
 
 

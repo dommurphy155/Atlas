@@ -47,3 +47,19 @@ class SSEFormatter:
     @staticmethod
     def format_keepalive() -> bytes:
         return b": keepalive\n\n"
+
+
+# Convenience function
+def format_sse_event(data: str, event_type: Optional[str] = None) -> str:
+    """Format SSE event as string for streaming response."""
+    if not data and not event_type:
+        return ": keepalive\n\n"
+    if event_type == "ping":
+        return f"event: ping\ndata: {data or ''}\n\n"
+    if event_type == "done":
+        return "data: [DONE]\n\n"
+    if event_type == "message_delta":
+        return f"data: {data}\n\n"
+    if event_type == "message_stop":
+        return f"event: message_stop\ndata: {data}\n\n"
+    return f"data: {data}\n\n"
