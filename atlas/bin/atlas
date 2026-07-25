@@ -244,6 +244,29 @@ do_logs() {
   journalctl -u "$ATLAS_SERVICE" -f --no-pager -o json | _atlas_log_filter
 }
 
+do_debug() {
+  # Run the proxy in foreground with DEBUG logging. Useful for seeing exactly
+  # what's happening on a failing request — no systemd, no journal, just stdout.
+  local cli_self proj_dir provider
+  cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
+  proj_dir="$(dirname "$(dirname "$cli_self")")"
+  if [[ ! -x "$proj_dir/.venv/bin/python" ]]; then
+    err "atlas venv not found at $proj_dir/.venv (re-run setup/install.sh)"
+    return 1
+  fi
+  # Read provider from .provider file or env
+  if [[ -f "$proj_dir/data/.provider" ]]; then
+    provider="$(cat "$proj_dir/data/.provider")"
+  else
+    provider="${ATLAS_PROXY_PROVIDER:-nvidia}"
+  fi
+  info "atlas: starting proxy in DEBUG mode (foreground, Ctrl-C to stop)"
+  info "atlas: provider=$provider"
+  # Run from project dir so `proxy.atlas_proxy` resolves on sys.path
+  ATLAS_PROXY_DEBUG=1 ATLAS_PROXY_PROVIDER="$provider" \
+    cd "$proj_dir" && exec ./.venv/bin/python -m proxy.atlas_proxy
+}
+
 do_tokens() {
   # Resolve the atlas project dir from the CLI symlink so this works regardless
   # of cwd. The symlink at /usr/local/bin/atlas -> .../atlas/bin/atlas resolves
@@ -293,6 +316,7 @@ main() {
         restart) do_service restart "$@" ;;
         status)  do_status ;;
         logs)    do_logs "$@" ;;
+        debug)   do_debug ;;
         tokens)  do_tokens ;;
         debug)   do_debug ;;
         -h|--help|"") usage ;;

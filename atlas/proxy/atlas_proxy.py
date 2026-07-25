@@ -802,6 +802,10 @@ async def _stream_failover_loop(
     MAX_RETRIES on the same pool; any other 4xx surfaces the real upstream
     message so the client sees "upstream returned 400: Validation: ...".
 
+    Worker limit (32/32) errors are detected in the SSE stream (HTTP 200 with
+    error chunk). When caught, the key is cooled and we back off with
+    exponential backoff + jitter before retrying on the next key.
+
     Timings: ``queue`` spans request-received → key acquired (request starts
     processing); ``preprocess`` spans acquire → upstream request sent. The
     client then fills ``upstream`` (send→first byte), ``ttft`` (request start→
@@ -810,6 +814,7 @@ async def _stream_failover_loop(
     key's queue/preprocess into the winner's line.
     """
     server_retries = 0
+    worker_limit_retries = 0
     _acquired_at = 0.0  # request-received stamp for queue, set each attempt
 
     while True:
@@ -863,11 +868,51 @@ async def _stream_failover_loop(
             continue
 
         if status < 400:
-            return wrap_success(
-                api_key=api_key, key_id=key_id, status=status,
-                headers=headers, iterator=iterator,
-                rid=rid, started=started, timings=timings,
-            )
+            # Wrap the iterator to detect worker limit error in SSE stream
+            async def _detect_worker_limit(it: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+                nonlocal worker_limit_retries
+                async for chunk in it:
+                    try:
+                        text = chunk.decode("utf-8", errors="replace")
+                        if _is_worker_limit_error(text):
+                            raise WorkerLimitExceeded()
+                    except WorkerLimitExceeded:
+                        raise
+                    except Exception:
+                        pass
+                    yield chunk
+
+            wrapped_iterator = _detect_worker_limit(iterator)
+
+            try:
+                return wrap_success(
+                    api_key=api_key, key_id=key_id, status=status,
+                    headers=headers, iterator=wrapped_iterator,
+                    rid=rid, started=started, timings=timings,
+                )
+            except WorkerLimitExceeded:
+                # Worker limit detected in SSE stream — cool key, back off, retry
+                await key_store.cooldown_key(api_key)
+                record_failure("nvidia")
+                worker_limit_retries += 1
+                if worker_limit_retries > WORKER_LIMIT_MAX_RETRIES:
+                    _log_event(
+                        logging.WARNING, rid, "worker_limit_exhausted",
+                        f"<{rid} worker limit retries exhausted ({WORKER_LIMIT_MAX_RETRIES})",
+                        key=key_id, retries=worker_limit_retries,
+                    )
+                    return wrap_error(model, "NVIDIA worker limit reached, max retries exceeded", 503)
+                # Exponential backoff with jitter (per ollama's backoff strategy)
+                base = WORKER_LIMIT_BASE_BACKOFF
+                max_backoff = WORKER_LIMIT_MAX_BACKOFF
+                delay = min(base * (2 ** (worker_limit_retries - 1)) + random.uniform(0, 0.5), max_backoff)
+                _log_event(
+                    logging.WARNING, rid, "worker_limit_retry",
+                    f"<{rid} worker limit (32/32), cooling key {key_id}, backoff {delay:.1f}s, retry {worker_limit_retries}/{WORKER_LIMIT_MAX_RETRIES}",
+                    key=key_id, backoff=delay, retry=worker_limit_retries,
+                )
+                await asyncio.sleep(delay)
+                continue
 
         # Rate-limited / quota / auth / key-rejected — cool and rotate.
         if status in {402, 429, 401, 403, 404}:
