@@ -5,6 +5,7 @@ set -euo pipefail
 
 ATLAS_PROXY_URL="${ATLAS_PROXY_URL:-http://127.0.0.1:8788}"
 ATLAS_SERVICE="${ATLAS_SERVICE:-atlas-proxy.service}"
+ATLAS_PROVIDER="${ATLAS_PROXY_PROVIDER:-nvidia}"
 
 # --- color setup (TTY-aware) ---
 if [[ -t 1 ]]; then
@@ -21,13 +22,14 @@ warn() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
 
 usage() {
   cat <<EOF
-${C_BOLD}atlas${C_RESET} - operator CLI for the Atlas NVIDIA proxy
+${C_BOLD}atlas${C_RESET} - operator CLI for the Atlas proxy
 
 ${C_BOLD}Usage:${C_RESET}
-  atlas <command>
+  atlas <command> [options]
 
 ${C_BOLD}Commands:${C_RESET}
-  start     Start the atlas-proxy systemd service
+  start [--openrouter]   Start the atlas-proxy systemd service
+                         --openrouter use OpenRouter instead of NVIDIA
   stop      Stop the atlas-proxy systemd service
   restart   Restart the atlas-proxy systemd service
   status    Show service status + proxy /health and /stats
@@ -45,8 +47,9 @@ ${C_BOLD}Commands:${C_RESET}
   -h, --help, (none)   Show this help
 
 ${C_BOLD}Environment:${C_RESET}
-  ATLAS_PROXY_URL   Proxy base URL (default: http://127.0.0.1:8788)
-  ATLAS_SERVICE      systemd unit name (default: atlas-proxy.service)
+  ATLAS_PROXY_URL       Proxy base URL (default: http://127.0.0.1:8788)
+  ATLAS_SERVICE         systemd unit name (default: atlas-proxy.service)
+  ATLAS_PROXY_PROVIDER Provider: nvidia (default) or openrouter
 EOF
 }
 
@@ -66,14 +69,41 @@ require_systemctl() {
 
 do_service() {
   local action="$1"
+  local provider="${ATLAS_PROVIDER:-nvidia}"
+
+  # Check for --openrouter flag in remaining args
+  if [[ "$*" == *"--openrouter"* ]]; then
+    provider="openrouter"
+  fi
+
   require_systemctl || return 1
   require_root "$action" || return 1
-  info "atlas: $action $ATLAS_SERVICE"
-  if systemctl "$action" "$ATLAS_SERVICE"; then
-    ok "atlas: $action done"
+
+  # For start/restart, set the provider via environment
+  if [[ "$action" == "start" || "$action" == "restart" ]]; then
+    info "atlas: $action $ATLAS_SERVICE (provider=$provider)"
+    # Write provider to a file in project data dir for the proxy to read
+    local cli_self proj_dir
+    cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
+    proj_dir="$(dirname "$(dirname "$cli_self")")"
+    echo "$provider" > "$proj_dir/data/.provider"
+    chmod 644 "$proj_dir/data/.provider"
+    # Stop first if running
+    systemctl stop "$ATLAS_SERVICE" 2>/dev/null || true
+    if systemctl start "$ATLAS_SERVICE"; then
+      ok "atlas: $action done"
+    else
+      err "atlas: $action failed"
+      return 1
+    fi
   else
-    err "atlas: $action failed"
-    return 1
+    info "atlas: $action $ATLAS_SERVICE"
+    if systemctl "$action" "$ATLAS_SERVICE"; then
+      ok "atlas: $action done"
+    else
+      err "atlas: $action failed"
+      return 1
+    fi
   fi
 }
 
@@ -234,9 +264,10 @@ main() {
     shift || true
 
     case "$cmd" in
-        start)   do_service start ;;
+        start)
+            do_service start "$@" ;;
         stop)    do_service stop ;;
-        restart) do_service restart ;;
+        restart) do_service restart "$@" ;;
         status)  do_status ;;
         logs)    do_logs "$@" ;;
         tokens)  do_tokens ;;

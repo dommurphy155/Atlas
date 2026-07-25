@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 import json
 import logging
 import os
@@ -19,11 +20,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from proxy.nvidia_key_store import NvidiaKeyStore, fingerprint as key_fingerprint
+from proxy.openrouter_key_store import OpenRouterKeyStore, fingerprint as openrouter_key_fingerprint
 from proxy.nvidia_client import NvidiaClient
+from proxy.openrouter_client import OpenRouterClient
 from proxy.openai_compat import (
     anthropic_openai_payload,
     anthropic_response_from_blocks,
     anthropic_sse_from_response,
+    estimate_input_tokens,
+    generate_message_id,
     normalize_messages,
     openai_response_from_router,
     openai_response_to_anthropic,
@@ -49,13 +54,33 @@ MAX_BODY_BYTES = 256 * 1024 * 1024
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
 
-# Atlas is a single-provider NVIDIA proxy. Every request routes directly to
-# NVIDIA's chat-completions endpoint. No fallback, no provider switching.
+# Atlas proxy supports multiple providers: nvidia (default) and openrouter.
+# Provider can be set via:
+#   1. ATLAS_PROXY_PROVIDER env var
+#   2. File at ROOT_DIR/data/.provider (written by atlas CLI)
+_PROVIDER_FILE = ROOT_DIR / "data" / ".provider"
+if _PROVIDER_FILE.exists():
+    _PROVIDER = _PROVIDER_FILE.read_text().strip().lower()
+else:
+    _PROVIDER = os.getenv("ATLAS_PROXY_PROVIDER", "nvidia").lower()
+
+if _PROVIDER not in ("nvidia", "openrouter"):
+    print(f"Error: ATLAS_PROXY_PROVIDER must be 'nvidia' or 'openrouter', got '{_PROVIDER}'", file=sys.stderr)
+    sys.exit(1)
+
 HOST = os.getenv("ATLAS_PROXY_HOST", "127.0.0.1")
 PORT = int(os.getenv("ATLAS_PROXY_PORT", "8788"))
-KEYS_FILE = os.getenv("ATLAS_KEYS_FILE", str(ROOT_DIR / "data" / "keys.txt"))
-NVIDIA_MODEL = os.getenv("ATLAS_NVIDIA_MODEL", "z-ai/glm-5.2")
+
+# Provider-specific keys file
+if _PROVIDER == "openrouter":
+    KEYS_FILE = os.getenv("ATLAS_KEYS_FILE", str(ROOT_DIR / "data" / "openroute_keys.txt"))
+else:
+    KEYS_FILE = os.getenv("ATLAS_KEYS_FILE", str(ROOT_DIR / "data" / "nvda_keys.txt"))
+
+DEFAULT_MODEL = os.getenv("ATLAS_DEFAULT_MODEL", "z-ai/glm-5.2")
 NVIDIA_BASE_URL = os.getenv("ATLAS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
+OPENROUTER_BASE_URL = os.getenv("ATLAS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1/chat/completions")
+OPENROUTER_MODEL = os.getenv("ATLAS_OPENROUTER_MODEL", "openai/gpt-4o-mini")
 RELOAD_SECONDS = int(os.getenv("ATLAS_PROXY_RELOAD_SECONDS", "5"))
 REQUEST_TIMEOUT = float(os.getenv("ATLAS_PROXY_REQUEST_TIMEOUT", "300"))
 CONNECT_TIMEOUT = float(os.getenv("ATLAS_PROXY_CONNECT_TIMEOUT", "10"))
@@ -151,8 +176,17 @@ logger = logging.getLogger("atlas-proxy")
 for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpx._client", "watchfiles"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 
-key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
-nvidia_client = NvidiaClient(NVIDIA_BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
+# Provider factory - creates the appropriate client and key store
+if _PROVIDER == "openrouter":
+    key_store = OpenRouterKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
+    client = OpenRouterClient(OPENROUTER_BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
+    DEFAULT_MODEL = OPENROUTER_MODEL
+    key_fingerprint = openrouter_key_fingerprint
+else:
+    key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
+    client = NvidiaClient(NVIDIA_BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
+    DEFAULT_MODEL = os.getenv("ATLAS_NVIDIA_MODEL", "z-ai/glm-5.2")
+
 watch_task: asyncio.Task[None] | None = None
 active_requests = 0
 
@@ -166,11 +200,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # bucket is cleared. Stamps a fresh started_at too.
     reset_since_restart()
     watch_task = asyncio.create_task(key_store.watch())
-    # Warm the NVIDIA connection pool in the background so the first real
-    # request doesn't pay the TLS handshake. Non-blocking: if NVIDIA is slow
+    # Warm the provider connection pool in the background so the first real
+    # request doesn't pay the TLS handshake. Non-blocking: if provider is slow
     # the first request just warms it itself.
-    prewarm_task = asyncio.create_task(nvidia_client.prewarm())
-    logger.info("atlas started on %s:%s using keys_file=%s model=%s", HOST, PORT, KEYS_FILE, NVIDIA_MODEL)
+    prewarm_task = asyncio.create_task(client.prewarm())
+    logger.info("atlas started on %s:%s provider=%s keys_file=%s model=%s", HOST, PORT, _PROVIDER, KEYS_FILE, DEFAULT_MODEL)
     try:
         yield
     finally:
@@ -190,7 +224,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.info("draining %d active request(s), %.1fs left", active_requests, drain_deadline)
             await asyncio.sleep(0.5)
             drain_deadline -= 0.5
-        await nvidia_client.close()
+        await client.close()
 
 
 app = FastAPI(title="Atlas Proxy", lifespan=lifespan)
@@ -407,7 +441,7 @@ async def health() -> dict[str, Any]:
         "status": "ok",
         "service": "atlas-proxy",
         "provider": "nvidia",
-        "model": NVIDIA_MODEL,
+        "model": DEFAULT_MODEL,
         "host": HOST,
         "port": PORT,
         "keys_available": key_store.available,
@@ -421,7 +455,7 @@ async def stats() -> dict[str, Any]:
     return {
         "status": "ok",
         "provider": "nvidia",
-        "model": NVIDIA_MODEL,
+        "model": DEFAULT_MODEL,
         "nvidia_base_url": NVIDIA_BASE_URL,
         "keys_file": KEYS_FILE,
         "nvidia_keys_total": nvidia_stats["total_keys"],
@@ -438,7 +472,7 @@ async def models() -> dict[str, Any]:
         "object": "list",
         "data": [
             {
-                "id": NVIDIA_MODEL,
+                "id": DEFAULT_MODEL,
                 "object": "model",
                 "created": 0,
                 "owned_by": "nvidia",
@@ -462,9 +496,9 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
     except ValueError as exc:
         return json_error(str(exc), "bad_request", 400)
 
-    model = str(body.get("model") or NVIDIA_MODEL)
+    model = str(body.get("model") or DEFAULT_MODEL)
     if model == "default":
-        model = NVIDIA_MODEL
+        model = DEFAULT_MODEL
 
     # Sanitize the client body for NVIDIA's GLM models before it leaves the
     # proxy. The old code did dict(body) and forwarded every client field
@@ -485,7 +519,7 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
     started = time.monotonic()
     _log_event(
         logging.INFO, rid, "request",
-        f">{rid} {_short_model(model)} stream={'yes' if stream else 'no'} provider=nvidia",
+        f">{rid} {_short_model(model)} stream={'yes' if stream else 'no'} provider={_PROVIDER}",
         model=model, stream=stream, provider="nvidia",
     )
 
@@ -531,7 +565,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
     replace_system_prompt(body, provider="anthropic")
 
     try:
-        payload = anthropic_openai_payload(body, NVIDIA_MODEL)
+        payload = anthropic_openai_payload(body, DEFAULT_MODEL)
     except ValueError as exc:
         return JSONResponse(
             {"type": "error", "error": {"type": "invalid_request_error", "message": str(exc)}},
@@ -542,8 +576,8 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
     started = time.monotonic()
     _log_event(
         logging.INFO, rid, "request",
-        f">{rid} {requested_model}->{_short_model(NVIDIA_MODEL)} stream={'yes' if body.get('stream') else 'no'} provider=nvidia",
-        model=requested_model, upstream_model=NVIDIA_MODEL,
+        f">{rid} {requested_model}->{_short_model(DEFAULT_MODEL)} stream={'yes' if body.get('stream') else 'no'} provider={_PROVIDER}",
+        model=requested_model, upstream_model=DEFAULT_MODEL,
         stream=bool(body.get("stream")), provider="nvidia",
     )
 
@@ -562,7 +596,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
 
     active_requests += 1
     try:
-        response = await handle_non_stream(NVIDIA_MODEL, payload, rid, started)
+        response = await handle_non_stream(DEFAULT_MODEL, payload, rid, started)
     finally:
         active_requests -= 1
 
@@ -593,7 +627,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
 
     openai_payload = json.loads(response.body.decode("utf-8"))
     pt, ct, tt, tc = _extract_usage(openai_payload)
-    record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
+    record_success(_PROVIDER,DEFAULT_MODEL, pt, ct, tt, tc)
 
     anthropic_payload = openai_response_to_anthropic(requested_model, openai_payload)
 
@@ -636,7 +670,7 @@ async def handle_non_stream(
         # preprocess = key acquired → upstream request sent.
         timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
-            response = await nvidia_client.chat(api_key, payload, timings=timings)
+            response = await client.chat(api_key, payload, timings=timings)
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
             record_failure("nvidia")
@@ -659,7 +693,7 @@ async def handle_non_stream(
 
         if response.status_code < 400 and response.json_data is not None:
             pt, ct, tt, tc = _extract_usage(response.json_data)
-            record_success("nvidia", model, pt, ct, tt, tc)
+            record_success(_PROVIDER,model, pt, ct, tt, tc)
             # Non-stream: no streamed chunks, so ttft = total (first "token" is
             # the whole body) and stream = 0. The client already set upstream
             # (send→response) and stream=0; mirror upstream into ttft so the
@@ -807,7 +841,7 @@ async def _stream_failover_loop(
         # the client's _t_send is the send instant (≈ immediately after).
         timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
-            status, headers, iterator, error_message = await nvidia_client.stream_chat(
+            status, headers, iterator, error_message = await client.stream_chat(
                 api_key, payload, rid=rid, on_timeout=_on_timeout, timings=timings,
             )
         except httpx.TimeoutException:
@@ -943,22 +977,29 @@ async def handle_anthropic_stream(
 
     def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
         def _on_done(pt: int, ct: int, tt: int, tc: int) -> None:
-            record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
+            record_success(_PROVIDER,DEFAULT_MODEL, pt, ct, tt, tc)
             usage_known = bool(pt or ct or tt)
-            line = _format_response_line(rid, 200, NVIDIA_MODEL, key_id, tc,
+            line = _format_response_line(rid, 200, DEFAULT_MODEL, key_id, tc,
                                          pt, ct, tt, timings, started, usage_known)
             _log_event(
                 logging.INFO, rid, "response", line,
-                status=200, model=NVIDIA_MODEL, key=key_id,
+                status=200, model=DEFAULT_MODEL, key=key_id,
                 tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
                 elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
+
+        # Estimate input tokens for the message_start event before actual
+        # metrics arrive on the final chunk (port of ollama's
+        # EstimateInputTokens → NewStreamConverter(estimatedInputTokens)).
+        est_tokens = estimate_input_tokens(body)
 
         return StreamingResponse(
             stream_with_active_count(
                 keepalive(
                     openai_sse_to_anthropic_sse(
-                        iterator, requested_model, on_done=_on_done,
+                        iterator, requested_model,
+                        on_done=_on_done,
+                        estimated_input_tokens=est_tokens,
                     ),
                     KEEPALIVE_SECONDS,
                 )
