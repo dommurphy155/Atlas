@@ -5,6 +5,10 @@ atlas/.env
 atlas/data/keys.txt
 atlas/data/proxy_stats.json
 atlas/data/proxy_stats.tmp
+atlas/data/openroute_keys.txt
+atlas/data/nvda_keys.txt
+atlas/data/burner_state.json
+atlas/data/.provider
 **/.env
 **/keys.txt
 **/proxy_stats.json

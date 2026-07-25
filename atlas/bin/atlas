@@ -43,6 +43,7 @@ ${C_BOLD}Commands:${C_RESET}
               atlas logs --since '10 min ago'
               atlas logs --raw             vanilla journalctl (no transform)
               atlas logs -o json | jq .    structured (raw passthrough)
+  debug     Run the proxy in foreground with DEBUG logging (Ctrl-C to stop)
   tokens    Clean token/usage summary since last restart
   -h, --help, (none)   Show this help
 
@@ -259,6 +260,28 @@ do_tokens() {
   (cd "$proj_dir" && ./.venv/bin/python -m proxy.token_tracker)
 }
 
+do_debug() {
+  # Run the proxy in foreground with DEBUG logging. Useful for seeing exactly
+  # what's happening on a failing request — no systemd, no journal, just stdout.
+  local cli_self proj_dir provider
+  cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
+  proj_dir="$(dirname "$(dirname "$cli_self")")"
+  if [[ ! -x "$proj_dir/.venv/bin/python" ]]; then
+    err "atlas venv not found at $proj_dir/.venv (re-run setup/install.sh)"
+    return 1
+  fi
+  # Read provider from .provider file or env
+  if [[ -f "$proj_dir/data/.provider" ]]; then
+    provider="$(cat "$proj_dir/data/.provider")"
+  else
+    provider="${ATLAS_PROXY_PROVIDER:-nvidia}"
+  fi
+  info "atlas: starting proxy in DEBUG mode (foreground, Ctrl-C to stop)"
+  info "provider=$provider"
+  ATLAS_PROXY_DEBUG=1 ATLAS_PROXY_PROVIDER="$provider" \
+    cd "$proj_dir" && exec ./.venv/bin/python -m proxy.atlas_proxy
+}
+
 main() {
     local cmd="${1:-}"
     shift || true
@@ -271,6 +294,7 @@ main() {
         status)  do_status ;;
         logs)    do_logs "$@" ;;
         tokens)  do_tokens ;;
+        debug)   do_debug ;;
         -h|--help|"") usage ;;
         *)
             err "unknown command: $cmd"
