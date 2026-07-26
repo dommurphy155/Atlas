@@ -28,9 +28,15 @@ from proxy.openai_compat import (
     openai_response_from_router,
     openai_response_to_anthropic,
     openai_error,
+    anthropic_error,
     openai_sse_to_anthropic_sse,
     sanitize_openai_payload,
     sse_from_text,
+    streaming_headers,
+    ResponsesRequest,
+    responses_request_to_openai,
+    responses_response_from_openai,
+    ResponsesStreamConverter,
 )
 from proxy.stats import record_failure, record_success, get_status as stats_status, reset_since_restart
 from proxy.system_prompt import replace_system_prompt
@@ -210,16 +216,23 @@ def anthropic_json_error(message: str, status: int) -> JSONResponse:
     — masking the real cause (e.g. a 413 request-too-large). Shape it properly
     so the actual message reaches the client.
     """
-    return JSONResponse(
-        {"type": "error", "error": {"type": "api_error", "message": message}},
-        status_code=status,
-    )
+    return JSONResponse(anthropic_error(message, status), status_code=status)
 
 
 def _generate_rid() -> str:
     """Generate a short request ID for tracing."""
     return uuid.uuid4().hex[:8]
 
+
+def streaming_headers() -> dict[str, str]:
+    """Standard headers for all SSE streaming responses."""
+    return {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",  # stronger than plain no-cache
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",          # nginx (and some other proxies)
+        "X-Content-Type-Options": "nosniff", # prevents MIME-sniffing
+    }
 
 def _log_event(
     level: int,
@@ -440,11 +453,72 @@ async def models() -> dict[str, Any]:
             {
                 "id": NVIDIA_MODEL,
                 "object": "model",
-                "created": 0,
+                "created": int(time.time()),
                 "owned_by": "nvidia",
             }
         ],
     }
+
+
+@app.post("/v1/responses", response_model=None)
+async def responses(request: Request) -> JSONResponse | StreamingResponse:
+    """OpenAI Responses API endpoint.
+
+    Converts Responses API request to OpenAI chat completions format,
+    routes through NVIDIA, converts response back to Responses API format.
+    """
+    global active_requests
+    body = await parse_request_body(request, endpoint="openai")
+    if isinstance(body, JSONResponse):
+        return body
+
+    # Parse Responses API request
+    try:
+        req = ResponsesRequest.from_dict(body)
+    except (ValueError, TypeError) as exc:
+        return json_error(str(exc), "bad_request", 400)
+
+    model = str(req.model or NVIDIA_MODEL)
+    if model == "default":
+        model = NVIDIA_MODEL
+
+    # Convert to OpenAI chat completions payload
+    upstream_payload = responses_request_to_openai(req, model)
+    stream = req.stream
+
+    replace_system_prompt(upstream_payload, provider="openai")
+
+    rid = _generate_rid()
+    started = time.monotonic()
+    _log_event(
+        logging.INFO, rid, "request",
+        f">{rid} responses {_short_model(model)} stream={'yes' if stream else 'no'} provider=nvidia",
+        model=model, stream=stream, provider="nvidia",
+    )
+
+    if stream:
+        active_requests += 1
+        try:
+            response = await handle_responses_stream(model, upstream_payload, req, rid, started)
+            return response
+        except Exception:
+            active_requests -= 1
+            timings = _new_timings(started)
+            line = _format_response_line(rid, 500, model, "?", 0, 0, 0, 0, timings, started, False)
+            logger.info(line)
+            record_failure("nvidia")
+            raise
+
+    active_requests += 1
+    try:
+        result = await handle_non_stream(model, upstream_payload, rid, started)
+        if result.status_code >= 400:
+            timings = _new_timings(started)
+            line = _format_response_line(rid, result.status_code, model, "?", 0, 0, 0, 0, timings, started, False)
+            logger.info(line)
+        return result
+    finally:
+        active_requests -= 1
 
 
 # ── Request endpoints ──────────────────────────────────────────────────
@@ -584,12 +658,9 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
                 anthropic_sse_from_response(error_response),
                 status_code=200 if status < 500 else status,
                 media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                headers=streaming_headers(),
             )
-        return JSONResponse(
-            {"type": "error", "error": {"type": "api_error", "message": str(message)}},
-            status_code=status,
-        )
+        return anthropic_json_error(str(message), status)
 
     openai_payload = json.loads(response.body.decode("utf-8"))
     pt, ct, tt, tc = _extract_usage(openai_payload)
@@ -602,7 +673,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
             anthropic_sse_from_response(anthropic_payload),
             status_code=200,
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers=streaming_headers(),
         )
 
     return JSONResponse(anthropic_payload)
@@ -897,7 +968,7 @@ async def handle_stream(
                 )
             ),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers=streaming_headers(),
         )
 
     return await _stream_failover_loop(
@@ -925,7 +996,7 @@ def _anthropic_stream_error(model: str, message: str, status: int) -> StreamingR
         stream_with_active_count(iterator()),
         status_code=200 if status < 500 else status,
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers=streaming_headers(),
     )
 
 
@@ -965,13 +1036,79 @@ async def handle_anthropic_stream(
             ),
             status_code=200,
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers=streaming_headers(),
         )
 
     return await _stream_failover_loop(
         model=requested_model, payload=payload, rid=rid, started=started,
         label="anthropic stream",
         wrap_success=wrap_success, wrap_error=_anthropic_stream_error,
+    )
+
+
+async def handle_responses_stream(
+    model: str,
+    payload: dict[str, Any],
+    request: ResponsesRequest,
+    rid: str = "",
+    started: float = 0.0,
+) -> StreamingResponse:
+    """Responses API streaming: translate NVIDIA OpenAI SSE to Responses API SSE events."""
+
+    def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
+        converter = ResponsesStreamConverter(
+            response_id=rid,
+            item_id=f"msg_{rid}",
+            model=model,
+            request=request,
+        )
+
+        def _on_done(pt: int, ct: int, tt: int, tc: int) -> None:
+            record_success("nvidia", model, pt, ct, tt, tc)
+            usage_known = bool(pt or ct or tt)
+            line = _format_response_line(rid, 200, model, key_id, tc,
+                                         pt, ct, tt, timings, started, usage_known)
+            _log_event(
+                logging.INFO, rid, "response", line,
+                status=200, model=model, key=key_id,
+                tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
+                elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
+            )
+
+        async def iterator_wrapper() -> AsyncIterator[bytes]:
+            """Wrap the upstream iterator to convert OpenAI SSE to Responses API SSE."""
+            async for chunk in iterator:
+                # Parse the SSE chunk
+                lines = chunk.decode("utf-8").strip().split("\n")
+                for line in lines:
+                    if line.startswith("data: "):
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            continue
+                        try:
+                            openai_chunk = json.loads(data_str)
+                            # Process through converter
+                            events = converter.process(openai_chunk)
+                            for event in events:
+                                yield event
+                        except json.JSONDecodeError:
+                            continue
+
+        return StreamingResponse(
+            stream_with_active_count(
+                keepalive(
+                    iterator_wrapper(),
+                    KEEPALIVE_SECONDS,
+                )
+            ),
+            status_code=200,
+            media_type="text/event-stream",
+            headers=streaming_headers(),
+        )
+
+    return await _stream_failover_loop(
+        model=model, payload=payload, rid=rid, started=started,
+        label="responses stream", wrap_success=wrap_success, wrap_error=stream_error,
     )
 
 
@@ -1136,7 +1273,7 @@ def stream_error(model: str, message: str, status: int) -> StreamingResponse:
         stream_with_active_count(iterator()),
         status_code=status,
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers=streaming_headers(),
     )
 
 
