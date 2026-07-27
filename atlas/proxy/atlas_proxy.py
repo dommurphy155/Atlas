@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import aiofiles
 import httpx
 import uvicorn
 from dotenv import load_dotenv
@@ -86,6 +87,8 @@ DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
 # Log output shape. "pretty" (default) = the colored one-liner. "json" = one
 # JSON object per record, for piping to jq or shipping to an aggregator.
 LOG_FORMAT = os.getenv("ATLAS_PROXY_LOG_FORMAT", "pretty").lower()
+# Dump full request payloads (what goes to NVIDIA) to /tmp/atlas_req_<rid>.json
+DUMP_REQUESTS = os.getenv("ATLAS_PROXY_DUMP_REQUESTS", "0") == "1"
 
 
 class _CleanFormatter(logging.Formatter):
@@ -354,6 +357,57 @@ def _new_timings(started: float) -> dict[str, float]:
             "upstream": 0.0, "ttft": 0.0, "stream": 0.0}
 
 
+import aiofiles
+
+def _sanitize_for_dump(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove sensitive fields before writing request dumps."""
+    safe = dict(payload)
+    # Remove any auth-related fields that might accidentally be in body
+    for key in ("api_key", "authorization", "apiKey", "access_token", "bearer_token"):
+        safe.pop(key, None)
+    # Truncate system prompt if present (can be huge with harness reminders)
+    if "system" in safe and isinstance(safe["system"], str) and len(safe["system"]) > 500:
+        safe["system"] = safe["system"][:500] + "... [truncated]"
+    # Truncate messages content for size
+    if "messages" in safe and isinstance(safe["messages"], list):
+        safe_msgs = []
+        for msg in safe["messages"]:
+            if isinstance(msg, dict):
+                m = dict(msg)
+                if "content" in m and isinstance(m["content"], str) and len(m["content"]) > 1000:
+                    m["content"] = m["content"][:1000] + "... [truncated]"
+                safe_msgs.append(m)
+            else:
+                safe_msgs.append(msg)
+        safe["messages"] = safe_msgs
+    return safe
+
+
+async def _dump_request(rid: str, endpoint: str, payload: dict[str, Any]) -> None:
+    """Write sanitized request payload to /tmp/atlas_req_<rid>.json for debugging."""
+    if not DUMP_REQUESTS:
+        return
+    try:
+        path = f"/tmp/atlas_req_{rid}.json"
+        safe_payload = _sanitize_for_dump(payload)
+        async with aiofiles.open(path, "w") as f:
+            await f.write(json.dumps(safe_payload, indent=2, ensure_ascii=False))
+    except Exception:
+        pass  # never break the request path for logging
+
+
+async def _dump_upstream_request(rid: str, payload: dict[str, Any]) -> None:
+    """Write the exact payload sent to NVIDIA to /tmp/atlas_upstream_<rid>.json."""
+    if not DUMP_REQUESTS:
+        return
+    try:
+        path = f"/tmp/atlas_upstream_{rid}.json"
+        async with aiofiles.open(path, "w") as f:
+            await f.write(json.dumps(payload, indent=2, ensure_ascii=False))
+    except Exception:
+        pass  # never break the request path for logging
+
+
 async def parse_request_body(
     request: Request,
     endpoint: str = "openai",
@@ -405,6 +459,9 @@ async def parse_request_body(
 
     if not isinstance(payload, dict):
         return _shape("json body must be an object", 400)
+
+    # Dump raw request for debugging
+    await _dump_request(rid, endpoint, payload)
     return payload
 
 
@@ -488,6 +545,9 @@ async def responses(request: Request) -> JSONResponse | StreamingResponse:
 
     replace_system_prompt(upstream_payload, provider="openai")
 
+    # Dump the exact payload going to NVIDIA
+    await _dump_upstream_request(rid, upstream_payload)
+
     rid = _generate_rid()
     started = time.monotonic()
     _log_event(
@@ -555,6 +615,9 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
 
     replace_system_prompt(upstream_payload, provider="openai")
 
+    # Dump the exact payload going to NVIDIA (after sanitization + system prompt)
+    await _dump_upstream_request(rid, upstream_payload)
+
     rid = _generate_rid()
     started = time.monotonic()
     _log_event(
@@ -611,6 +674,9 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
             {"type": "error", "error": {"type": "invalid_request_error", "message": str(exc)}},
             status_code=400,
         )
+
+    # Dump the exact payload going to NVIDIA
+    await _dump_upstream_request(rid, payload)
 
     rid = _generate_rid()
     started = time.monotonic()
