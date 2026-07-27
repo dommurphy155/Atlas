@@ -6,30 +6,37 @@ from pathlib import Path
 from typing import Any
 
 
-# Sticky NVIDIA key pool with per-key cooldown.
+# Sticky NVIDIA key pool with per-key cooldown + per-key concurrency limit.
 #
-# Behavior the operator asked for:
-#   - Exactly one key is "active" at any time.
-#   - Every request uses the active key, repeatedly, until that key returns a
-#     rate-limit / quota / auth / transport error.
-#   - On such a failure the caller calls cooldown_key(), which blacklists the
-#     active key for COOLDOWN_SECONDS (default 60s).
-#   - The next acquire() then scans forward from the cooled key's position,
-#     picks the next eligible (non-cooled) key, and that becomes the new sticky
-#     active key.
+# Behavior:
+#   - Each key has a max concurrent request limit (default 8). acquire() skips
+#     keys at capacity, picks the next eligible key. This spreads concurrent
+#     load across the pool instead of hammering one key.
+#   - When a key hits rate-limit / quota / auth / transport error, caller calls
+#     cooldown_key(), which blacklists the key for COOLDOWN_SECONDS (default 60s).
+#   - The next acquire() scans forward from the cooled key's position, picks the
+#     next eligible (non-cooled, under-capacity) key as the new sticky active key.
 #   - A key whose cooldown has expired does NOT preempt the current active key.
 #     It simply becomes eligible again the next time the rotation naturally
-#     reaches it — i.e. only when the active key eventually fails and the scan
-#     walks past it.
+#     reaches it.
+#   - When a request completes (success or failure), caller calls release_key()
+#     to decrement the in-flight counter.
 #
 # Keys are loaded from disk (one per line) and reload on mtime change, so the
 # operator can edit data/keys.txt live and the pool picks it up. Keys are never
 # permanently removed.
 class NvidiaKeyStore:
-    def __init__(self, keys_file: str, reload_seconds: int = 5, cooldown_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        keys_file: str,
+        reload_seconds: int = 5,
+        cooldown_seconds: float = 60.0,
+        max_concurrent_per_key: int = 8,
+    ) -> None:
         self.keys_file = Path(keys_file)
         self.reload_seconds = max(1, reload_seconds)
         self.cooldown_seconds = max(0.0, cooldown_seconds)
+        self.max_concurrent_per_key = max(1, max_concurrent_per_key)
         self._keys: list[str] = []
         # The sticky active key index. -1 means "no active key yet; pick the
         # first eligible one on the next acquire()". We track an index (not the
@@ -40,6 +47,8 @@ class NvidiaKeyStore:
         self._mtime: float | None = None
         # key fingerprint -> cooldown-unix-epoch (monotonic)
         self._cooldowns: dict[str, float] = {}
+        # key fingerprint -> in-flight request count
+        self._in_flight: dict[str, int] = {}
 
     @property
     def available(self) -> bool:
@@ -92,23 +101,27 @@ class NvidiaKeyStore:
         return self._cooldowns.get(key, 0.0)
 
     def _is_eligible(self, idx: int, now: float) -> bool:
-        """A key is eligible iff it exists and is not currently on cooldown."""
+        """A key is eligible iff it exists, not on cooldown, and under concurrency limit."""
         if idx < 0 or idx >= len(self._keys):
             return False
-        return self._cooling_until(self._keys[idx]) <= now
+        key = self._keys[idx]
+        if self._cooling_until(key) > now:
+            return False
+        if self._in_flight.get(key, 0) >= self.max_concurrent_per_key:
+            return False
+        return True
 
     async def acquire(self) -> tuple[str, int] | None:
-        """Sticky acquire: return the current active key unless it's on cooldown.
+        """Sticky acquire with per-key concurrency limit.
 
-        - If the active key is eligible (exists, not on cooldown), return it
-          again. This is the hot path: repeated requests reuse the same key
-          until that key fails.
-        - If the active key is on cooldown (or unset), scan forward through the
-          pool from the active position and stick to the first eligible key we
-          find. That key becomes the new active key.
-        - If every key is on cooldown, fall back to the active key anyway (or the
-          next one if unset) so the request does not hard-fail when the pool is
-          merely rate-limited — better to try a cooling key than to 503.
+        - If the active key is eligible (exists, not on cooldown, under capacity),
+          return it again. This is the hot path: repeated requests reuse the same
+          key until that key fails or hits its concurrency limit.
+        - If the active key is ineligible (cooled, at capacity, or unset), scan
+          forward through the pool from the active position and stick to the first
+          eligible key we find. That key becomes the new sticky active key.
+        - If every key is ineligible, return None so the caller 503s instead of
+          hammering a cooled/overloaded key.
 
         Returns ``(key, index)`` so callers can log a stable key identity
         (position in keys.txt + a fingerprint) without re-scanning the pool.
@@ -122,9 +135,11 @@ class NvidiaKeyStore:
             # Hot path: the active key is still eligible. Keep using it.
             if self._is_eligible(self._active_index, now):
                 idx = self._active_index
-                return self._keys[idx], idx
+                key = self._keys[idx]
+                self._in_flight[key] = self._in_flight.get(key, 0) + 1
+                return key, idx
 
-            # Active key is cooled / unset — scan forward for the next eligible
+            # Active key is ineligible — scan forward for the next eligible
             # key and make it the new sticky active key. Start the scan at the
             # active index (or 0 if none) so we resume the forward rotation in
             # place rather than jumping back to the top of the list.
@@ -133,11 +148,13 @@ class NvidiaKeyStore:
                 idx = (start + offset) % n
                 if self._is_eligible(idx, now):
                     self._active_index = idx
-                    return self._keys[idx], idx
+                    key = self._keys[idx]
+                    self._in_flight[key] = self._in_flight.get(key, 0) + 1
+                    return key, idx
 
-            # Every key is cooling down. Never reuse a blacklisted key.
-            # Returning a cooled key defeats the purpose of the cooldown and
-            # creates a 429 retry loop.
+            # Every key is ineligible (cooled or at capacity). Never reuse a
+            # blacklisted/overloaded key — that defeats the cooldown and creates
+            # a 429 retry loop. Return None so the caller 503s.
             return None
 
     async def cooldown_key(self, key: str) -> None:
@@ -151,6 +168,18 @@ class NvidiaKeyStore:
         """
         async with self._lock:
             self._cooldowns[key] = time.monotonic() + self.cooldown_seconds
+
+    async def release_key(self, key: str) -> None:
+        """Decrement the in-flight counter for a key.
+
+        Call this when a request completes (success or failure) so the key's
+        concurrency slot is freed for the next acquire().
+        """
+        async with self._lock:
+            if key in self._in_flight:
+                self._in_flight[key] = max(0, self._in_flight[key] - 1)
+                if self._in_flight[key] == 0:
+                    del self._in_flight[key]
 
     def stats(self) -> dict[str, Any]:
         now = time.monotonic()

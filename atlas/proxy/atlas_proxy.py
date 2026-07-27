@@ -797,6 +797,7 @@ async def handle_non_stream(
         if response.status_code < 400 and response.json_data is not None:
             pt, ct, tt, tc = _extract_usage(response.json_data)
             record_success("nvidia", model, pt, ct, tt, tc)
+            await key_store.release_key(api_key)
             # Non-stream: no streamed chunks, so ttft = total (first "token" is
             # the whole body) and stream = 0. The client already set upstream
             # (send→response) and stream=0; mirror upstream into ttft so the
@@ -819,6 +820,7 @@ async def handle_non_stream(
         if response.status_code in {402, 429}:
             reason = "credits exhausted" if response.status_code == 402 else "quota/billing 429"
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             _log_event(
                 logging.WARNING, rid, "failover",
                 f"<{rid} key {key_id} cooled ({reason}), failover",
@@ -831,6 +833,7 @@ async def handle_non_stream(
         # treat it as a key problem and rotate rather than surfacing it.
         if response.status_code in {401, 403, 404}:
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             reason = "model/key 404" if response.status_code == 404 else "auth"
             _log_event(
                 logging.WARNING, rid, "failover",
@@ -855,6 +858,7 @@ async def handle_non_stream(
         # Any other 4xx — surface it, no point retrying.
         break
 
+    await key_store.release_key(api_key)
     record_failure("nvidia")
     return json_error(last_message, "upstream_error", last_status)
 
@@ -949,15 +953,17 @@ async def _stream_failover_loop(
             )
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             record_failure("nvidia")
             _log_event(
                 logging.WARNING, rid, "timeout",
                 f"<{rid} upstream timeout, cooled key {key_id}",
                 key=key_id, reason="upstream_timeout",
             )
-            return wrap_error(model, "upstream request timed out", 504)
+            return wrap_error(model, "upstream request timed out", 504, api_key)
         except httpx.HTTPError as exc:
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             _log_event(
                 logging.WARNING, rid, "failover",
                 f"<{rid} {label} key {key_id} transport error {exc.__class__.__name__}, failover",
@@ -975,6 +981,7 @@ async def _stream_failover_loop(
         # Rate-limited / quota / auth / key-rejected — cool and rotate.
         if status in {402, 429, 401, 403, 404}:
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             reason = _stream_failover_reason(status)
             _log_event(
                 logging.WARNING, rid, "failover",
@@ -986,8 +993,9 @@ async def _stream_failover_loop(
         # Transient upstream — small retry on the same key pool.
         if status in {500, 502, 503, 504}:
             if server_retries >= MAX_RETRIES:
+                await key_store.release_key(api_key)
                 record_failure("nvidia")
-                return wrap_error(model, f"upstream returned {status}", status)
+                return wrap_error(model, f"upstream returned {status}", status, api_key)
             _log_event(
                 logging.WARNING, rid, "retry",
                 f"<{rid} {label} key {key_id} upstream {status}, retry {server_retries + 1}/{MAX_RETRIES}",
@@ -1001,6 +1009,7 @@ async def _stream_failover_loop(
         # of a bare status. The sanitizer should have prevented the common
         # sampling-param 400s; this is the catch-all for anything we didn't
         # anticipate (malformed tool schema, unsupported field, ...).
+        await key_store.release_key(api_key)
         record_failure("nvidia")
         detail = f": {error_message}" if error_message else ""
         _log_event(
@@ -1008,10 +1017,11 @@ async def _stream_failover_loop(
             f"<{rid} {label} key {key_id} upstream {status}{detail}",
             key=key_id, status=status, error=error_message,
         )
-        return wrap_error(model, f"upstream returned {status}{detail}", status)
+        return wrap_error(model, f"upstream returned {status}{detail}", status, api_key)
 
+    await key_store.release_key(api_key)
     record_failure("nvidia")
-    return wrap_error(model, "no usable NVIDIA keys are available", 503)
+    return wrap_error(model, "no usable NVIDIA keys are available", 503, api_key)
 
 
 async def handle_stream(
@@ -1026,13 +1036,18 @@ async def handle_stream(
     # so stream_router_sse can stamp ttft/stream (the client filled upstream)
     # and build the response log line.
     def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
-        return StreamingResponse(
-            stream_with_active_count(
-                keepalive(
+        async def release_on_done() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in keepalive(
                     stream_router_sse(iterator, model, rid, "nvidia", started, key_id, timings),
                     KEEPALIVE_SECONDS,
-                )
-            ),
+                ):
+                    yield chunk
+            finally:
+                await key_store.release_key(api_key)
+
+        return StreamingResponse(
+            stream_with_active_count(release_on_done()),
             media_type="text/event-stream",
             headers=streaming_headers(),
         )
@@ -1046,7 +1061,7 @@ async def handle_stream(
 # ── Handler: Anthropic streaming ───────────────────────────────────────
 
 
-def _anthropic_stream_error(model: str, message: str, status: int) -> StreamingResponse:
+def _anthropic_stream_error(model: str, message: str, status: int, api_key: str = "") -> StreamingResponse:
     """Emit an Anthropic-shaped SSE error stream (for /v1/messages stream failures)."""
     error_response = anthropic_response_from_blocks(
         model,
@@ -1055,8 +1070,12 @@ def _anthropic_stream_error(model: str, message: str, status: int) -> StreamingR
     )
 
     async def iterator() -> AsyncIterator[bytes]:
-        async for chunk in anthropic_sse_from_response(error_response):
-            yield chunk
+        try:
+            async for chunk in anthropic_sse_from_response(error_response):
+                yield chunk
+        finally:
+            if api_key:
+                await key_store.release_key(api_key)
 
     return StreamingResponse(
         stream_with_active_count(iterator()),
@@ -1091,15 +1110,20 @@ async def handle_anthropic_stream(
                 elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
 
-        return StreamingResponse(
-            stream_with_active_count(
-                keepalive(
+        async def release_on_done() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in keepalive(
                     openai_sse_to_anthropic_sse(
                         iterator, requested_model, on_done=_on_done,
                     ),
                     KEEPALIVE_SECONDS,
-                )
-            ),
+                ):
+                    yield chunk
+            finally:
+                await key_store.release_key(api_key)
+
+        return StreamingResponse(
+            stream_with_active_count(release_on_done()),
             status_code=200,
             media_type="text/event-stream",
             headers=streaming_headers(),
@@ -1160,13 +1184,18 @@ async def handle_responses_stream(
                         except json.JSONDecodeError:
                             continue
 
-        return StreamingResponse(
-            stream_with_active_count(
-                keepalive(
+        async def release_on_done() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in keepalive(
                     iterator_wrapper(),
                     KEEPALIVE_SECONDS,
-                )
-            ),
+                ):
+                    yield chunk
+            finally:
+                await key_store.release_key(api_key)
+
+        return StreamingResponse(
+            stream_with_active_count(release_on_done()),
             status_code=200,
             media_type="text/event-stream",
             headers=streaming_headers(),
@@ -1330,10 +1359,14 @@ async def keepalive(iterator: AsyncIterator[bytes], interval: float) -> AsyncIte
         yield chunk
 
 
-def stream_error(model: str, message: str, status: int) -> StreamingResponse:
+def stream_error(model: str, message: str, status: int, api_key: str = "") -> StreamingResponse:
     async def iterator() -> AsyncIterator[bytes]:
-        async for chunk in sse_from_text(model, f"Atlas proxy error ({status}): {message}"):
-            yield chunk
+        try:
+            async for chunk in sse_from_text(model, f"Atlas proxy error ({status}): {message}"):
+                yield chunk
+        finally:
+            if api_key:
+                await key_store.release_key(api_key)
 
     return StreamingResponse(
         stream_with_active_count(iterator()),
