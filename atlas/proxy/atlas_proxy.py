@@ -776,6 +776,7 @@ async def handle_non_stream(
             response = await nvidia_client.chat(api_key, payload, timings=timings)
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             record_failure("nvidia")
             _log_event(
                 logging.WARNING, rid, "timeout",
@@ -785,6 +786,7 @@ async def handle_non_stream(
             return json_error("upstream request timed out", "upstream_timeout", 504)
         except httpx.HTTPError as exc:
             await key_store.cooldown_key(api_key)
+            await key_store.release_key(api_key)
             last_status = 502
             last_message = f"upstream request failed: {exc.__class__.__name__}"
             _log_event(
@@ -937,6 +939,7 @@ async def _stream_failover_loop(
             # this, a key that returns 200-then-hang recycles with no cooldown
             # and the death is counted as a success in /stats.
             asyncio.create_task(key_store.cooldown_key(api_key))
+            asyncio.create_task(key_store.release_key(api_key))
             record_failure("nvidia")
             _log_event(
                 logging.WARNING, rid, "timeout",
