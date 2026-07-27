@@ -498,6 +498,9 @@ async def stats() -> dict[str, Any]:
         "nvidia_keys_available": nvidia_stats["available"],
         "nvidia_keys_cooling_down": nvidia_stats["cooling_down"],
         "active_requests": active_requests,
+        "in_flight_total": nvidia_stats.get("in_flight_total", 0),
+        "in_flight_by_key": nvidia_stats.get("in_flight_by_key", {}),
+        "top_in_flight_keys": nvidia_stats.get("top_in_flight_keys", []),
         "proxy": proxy_stats,
     }
 
