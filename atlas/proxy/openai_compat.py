@@ -1409,6 +1409,9 @@ async def openai_sse_to_anthropic_sse(
                     )
                 err = chunk["error"]
                 err_text = str(err.get("message") or "upstream stream error")
+                # Detect worker concurrency limit in stream errors too
+                if "Worker local total request limit reached" in err_text:
+                    err_text = "upstream worker concurrency limit reached"
                 rid = err.get("rid")
                 tag = f"[stream error rid={rid}] {err_text}" if rid else f"[stream error] {err_text}"
                 yield _sse_event(
