@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-07-27T16:34:55",
+  "branch": "refactor",
+  "commit": "3de84cc",
+  "cold_import_ms": 1527.56,
+  "anthropic_conversion_per_req_us": 6.1,
+  "anthropic_conversion_total_ms": 6.12,
+  "responses_conversion_per_req_us": 3.2,
+  "responses_conversion_total_ms": 3.22,
+  "sse_conversion_per_stream_ms": 1.24,
+  "peak_rss_mb": 51.8
+}
