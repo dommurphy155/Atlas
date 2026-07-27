@@ -185,12 +185,22 @@ class NvidiaKeyStore:
         now = time.monotonic()
         cooling = sum(1 for until in self._cooldowns.values() if until > now)
         active_valid = 0 <= self._active_index < len(self._keys)
+        in_flight_total = sum(self._in_flight.values())
+        # Show top keys by in-flight count
+        top_keys = sorted(
+            [(fingerprint(k, self._keys.index(k) if k in self._keys else None), v)
+             for k, v in self._in_flight.items()],
+            key=lambda x: x[1], reverse=True
+        )[:5]
         return {
             "total_keys": len(self._keys),
             "available": len(self._keys) > 0,
             "cooling_down": cooling,
             "active_key_index": self._active_index,
             "active_key_eligible": active_valid and self._cooling_until(self._keys[self._active_index]) <= now,
+            "in_flight_total": in_flight_total,
+            "in_flight_by_key": dict(self._in_flight),
+            "top_in_flight_keys": top_keys,
         }
 
 
