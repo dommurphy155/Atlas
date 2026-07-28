@@ -851,12 +851,24 @@ async def _stream_failover_loop(
                 key=key_id, reason="midstream_timeout",
             )
 
+        def _on_worker_limit() -> None:
+            # Mid-stream worker limit: cool the key and record the failure.
+            # The stream will end with an error chunk, but we need to cool the
+            # key NOW so it doesn't get reused for the next request.
+            asyncio.create_task(key_store.cooldown_key(api_key))
+            record_failure("nvidia")
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} mid-stream worker limit, cooled key {key_id}",
+                key=key_id, reason="worker_limit_midstream",
+            )
+
         # preprocess = key acquired → upstream request sent. Stamp it now;
         # the client's _t_send is the send instant (≈ immediately after).
         timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
             status, headers, iterator, error_message = await nvidia_client.stream_chat(
-                api_key, payload, rid=rid, on_timeout=_on_timeout, timings=timings,
+                api_key, payload, rid=rid, on_timeout=_on_timeout, on_worker_limit=_on_worker_limit, timings=timings,
             )
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
@@ -949,10 +961,21 @@ async def handle_stream(
     # so stream_router_sse can stamp ttft/stream (the client filled upstream)
     # and build the response log line.
     def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
+        async def _cooldown_on_worker_limit() -> None:
+            await key_store.cooldown_key(api_key)
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} stream key {key_id} cooled mid-stream (worker concurrency limit)",
+                key=key_id, reason="worker_limit_midstream",
+            )
+
         return StreamingResponse(
             stream_with_active_count(
                 keepalive(
-                    stream_router_sse(iterator, model, rid, "nvidia", started, key_id, timings),
+                    stream_router_sse(
+                        iterator, model, rid, "nvidia", started, key_id, timings,
+                        on_worker_limit=_cooldown_on_worker_limit,
+                    ),
                     KEEPALIVE_SECONDS,
                 )
             ),
@@ -1014,11 +1037,20 @@ async def handle_anthropic_stream(
                 elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
 
+        async def _cooldown_on_worker_limit() -> None:
+            await key_store.cooldown_key(api_key)
+            _log_event(
+                logging.WARNING, rid, "failover",
+                f"<{rid} anthropic stream key {key_id} cooled mid-stream (worker concurrency limit)",
+                key=key_id, reason="worker_limit_midstream",
+            )
+
         return StreamingResponse(
             stream_with_active_count(
                 keepalive(
                     openai_sse_to_anthropic_sse(
                         iterator, requested_model, on_done=_on_done,
+                        on_worker_limit=_cooldown_on_worker_limit,
                     ),
                     KEEPALIVE_SECONDS,
                 )
@@ -1046,6 +1078,7 @@ async def stream_router_sse(
     started: float,
     key_id: str = "",
     timings: dict[str, float] | None = None,
+    on_worker_limit: Any = None,
 ) -> AsyncIterator[bytes]:
     """Stream SSE chunks, capturing usage across chunk boundaries, then log.
 
@@ -1061,6 +1094,9 @@ async def stream_router_sse(
     populated (upstream/ttft on first byte). We measure ``stream`` here at the
     forwarding layer (first forwarded chunk → last) since this is the last byte
     the client sees, then hand the dict to ``_format_response_line``.
+
+    ``on_worker_limit`` is invoked when a worker concurrency limit error is
+    detected in an SSE error chunk. Optional.
     """
     pt = ct = tt = tc = 0
     saw_usage = False
@@ -1088,6 +1124,18 @@ async def stream_router_sse(
                 data = json.loads(data_str)
             except (json.JSONDecodeError, ValueError):
                 continue
+
+            # Detect worker concurrency limit in SSE error chunks
+            if on_worker_limit is not None and isinstance(data, dict):
+                error_obj = data.get("error")
+                if isinstance(error_obj, dict):
+                    err_msg = str(error_obj.get("message") or "")
+                    if "Worker local total request limit reached" in err_msg:
+                        try:
+                            on_worker_limit()
+                        except Exception:
+                            pass
+
             usage = None
             if isinstance(data, dict):
                 # NVIDIA/OpenAI put usage at the chunk top level on the final

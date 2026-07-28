@@ -1303,6 +1303,7 @@ async def openai_sse_to_anthropic_sse(
     iterator: AsyncIterator[bytes],
     model: str,
     on_done: Any = None,
+    on_worker_limit: Any = None,
 ) -> AsyncIterator[bytes]:
     """Translate an OpenAI/NVIDIA SSE byte stream into Anthropic SSE events.
 
@@ -1313,6 +1314,10 @@ async def openai_sse_to_anthropic_sse(
     `on_done(prompt_tokens, completion_tokens, total_tokens, tool_calls)` is
     invoked once with the final usage if the upstream reports it; the caller
     wires this to stats. Optional.
+
+    `on_worker_limit()` is invoked when a worker concurrency limit error is
+    detected in an SSE error chunk. This allows the caller to cool the key
+    and trigger failover. Optional.
     """
     message_id = f"msg_{uuid.uuid4().hex}"
     started = False
@@ -1412,6 +1417,11 @@ async def openai_sse_to_anthropic_sse(
                 # Detect worker concurrency limit in stream errors too
                 if "Worker local total request limit reached" in err_text:
                     err_text = "upstream worker concurrency limit reached"
+                    if on_worker_limit is not None:
+                        try:
+                            on_worker_limit()
+                        except Exception:
+                            pass
                 rid = err.get("rid")
                 tag = f"[stream error rid={rid}] {err_text}" if rid else f"[stream error] {err_text}"
                 yield _sse_event(

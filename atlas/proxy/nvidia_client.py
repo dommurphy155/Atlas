@@ -120,6 +120,7 @@ class NvidiaClient:
         payload: dict[str, Any],
         rid: str = "",
         on_timeout: Callable[[], None] | None = None,
+        on_worker_limit: Callable[[], None] | None = None,
         timings: dict[str, float] | None = None,
     ) -> tuple[int, httpx.Headers, AsyncIterator[bytes], str]:
         """Streaming chat. If ``timings`` is a dict, it is populated with
@@ -179,6 +180,7 @@ class NvidiaClient:
 
         async def iterator() -> AsyncIterator[bytes]:
             _first = None
+            _worker_limit_detected = False
             try:
                 async for chunk in response.aiter_bytes():
                     if chunk:
@@ -186,14 +188,26 @@ class NvidiaClient:
                             _first = _t.monotonic()
                             if timings is not None:
                                 timings["upstream"] = max(0.0, _first - _t_send)
-                                # ttft = request start -> first token. Spans
-                                # queue + preprocess + upstream. __started is
-                                # seeded by the handler (request-received stamp).
                                 _started = timings.get("__started")
                                 if _started is not None:
                                     timings["ttft"] = max(0.0, _first - _started)
                         if timings is not None:
                             timings["stream"] = max(0.0, _t.monotonic() - _first)
+
+                        # Check for worker limit error in SSE chunk
+                        if not _worker_limit_detected and on_worker_limit is not None:
+                            try:
+                                # SSE chunks are "data: {...}\n\n" - check for error
+                                chunk_str = chunk.decode("utf-8", errors="replace")
+                                if "Worker local total request limit reached" in chunk_str:
+                                    _worker_limit_detected = True
+                                    try:
+                                        on_worker_limit()
+                                    except Exception:
+                                        logger.warning("on_worker_limit callback failed for %s", rid)
+                            except Exception:
+                                pass
+
                         yield chunk
             except httpx.TimeoutException as exc:
                 # Mid-stream timeout (idle gap exceeded). Emit a terminal
