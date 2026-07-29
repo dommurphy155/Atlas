@@ -1,0 +1,220 @@
+╭─── Claude Code v2.1.220 ─────────────────────────────────────────────────────╮
+│                                       │ Tips for getting started             │
+│             Welcome back!             │ Run /init to create a CLAUDE.md fil… │
+│                                       │ ──────────────────────────────────── │
+│                ▐▛███▜▌                │ What's new                           │
+│               ▝▜█████▛▘               │ Bug fixes and reliability improveme… │
+│                 ▘▘ ▝▝                 │ Added Claude Opus 5 (`claude-opus-5… │
+│                                       │ Added `sandbox.network.strictAllowl… │
+│      Opus 5 · API Usage Billing       │ /release-notes for more              │
+│   @general-purpose · ~/claude/atlas   │                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+❯ read ~/claude/atlas/proxy/*.py                                                
+
+  Read 7 files, listed 1 directory (ctrl+o to expand)
+
+● Read all 7 files. Notable observations:
+
+  Architecture: Single-provider NVIDIA proxy. FastAPI app on 127.0.0.1:8788,
+  speaks both OpenAI (/v1/chat/completions) and Anthropic (/v1/messages) wire
+  shapes, routes everything to NVIDIA's GLM-5.2 endpoint.
+
+  Key files:
+  - atlas_proxy.py (1278 lines) — main app, handlers, failover loop, SSE
+  adapters, stats endpoints
+  - nvidia_key_store.py — sticky key pool with per-key cooldown, mtime-reload
+  from keys.txt
+  - nvidia_client.py — httpx wrapper with split timeouts (flat for non-stream,
+  generous read for stream)
+  - openai_compat.py (2469 lines) — payload sanitization, Anthropic↔OpenAI
+  conversion, full Responses API port
+  - system_prompt.py — strips <system-reminder> blocks, rewrites Claude-identity
+  leakage, injects end-of-conversation reinforcement
+  - stats.py / token_tracker.py — since-restart + all-time counters, persisted
+  to data/proxy_stats.json
+
+  Things worth flagging:
+
+  1. openai_compat.py has duplicate code. The
+  ResponsesInput/ResponsesRequest/ResponsesStreamConverter classes are defined
+  twice (lines ~17-543 and again ~1530-2467). The second copy is a slightly
+  extended version (adds include/conversation fields, different ResponsesRequest
+  signature). Dead code or active — unclear without checking imports.
+  2. nvidia_client.py:130-149 has a docstring inside a method body. The """Open 
+  a streaming chat request...""" block sits between executable statements, not
+  as the function's docstring. Python tolerates it (it's a string literal
+  expression, evaluated and discarded) but it's ugly and confusing.
+  3. system_prompt.py is the override machinery. It mutates the body to strip
+  Claude identity ("I'm Claude" → "I'm Atlas") and injects a compact reminder
+  before the final user turn. This is the adherence layer — without it, GLM-5.2
+  falls back to safety training on multi-turn requests.
+  4. atlas_proxy.py has a known dead-code path. handle_non_stream records
+  record_failure on terminal errors but the streaming path's wrap_error
+  callbacks don't always record failures — stream_error and
+  _anthropic_stream_error are pure response builders. Failures are recorded in
+  _stream_failover_loop directly, so it works, but the separation is fragile.
+  5. MAX_BODY_BYTES = 256 MiB — explicitly raised from 2 MiB to fix the
+  "Internal Error at ~135k context" bug. Comment explains why.
+  6. No /v1/responses endpoint in atlas_proxy.py. The Responses API conversion
+  code exists in openai_compat.py but nothing routes to it. Either dead code or
+  wired up elsewhere.
+
+  What do you want to do with this?
+
+✻ Churned for 1m 50s
+
+❯ find all dead code                                                            
+
+  Searched for 16 patterns (ctrl+o to expand)
+
+● completion_id is called but never defined — that's a latent bug, not dead
+  code. Let me check more.
+
+  Searched for 10 patterns (ctrl+o to expand)
+
+● Now let me check atlas_proxy.py for internal dead code and the
+  anthropic_json_error issue:
+
+  Searched for 9 patterns, read 1 file (ctrl+o to expand)
+
+● Found it. Lines 608-619 — the non-streaming path's body.get("stream") branch
+  is dead. We already routed streaming requests to handle_anthropic_stream at
+  line 589, so by line 608 body.get("stream") is always False. That entire
+  if-block is unreachable.
+
+  Let me verify the Responses API second copy is truly unused:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Now I have the full picture. Let me also check the nvidia_client.py
+  docstring-in-body issue and extract_router_content usage:
+
+  Read 1 file (ctrl+o to expand)
+
+● Confirmed. Now let me check the system_prompt.py for any dead code:
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● _content_to_text and _prepend_to_user_content are defined but never called.
+  Let me verify:
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Confirmed — only defined, never called. Now the full dead-code inventory:
+
+  Dead Code Inventory
+
+  proxy/openai_compat.py (~1100 lines dead)
+
+  Entire first Responses API block (lines 11–543):
+  - ResponsesInput, ResponsesReasoning, ResponsesTextFormat, ResponsesText,
+  ResponsesTool, ResponsesRequest (first copy, lines 17–88)
+  - responses_request_to_openai (line 90) — used only by tests/benchmark.py
+  - responses_response_from_openai (line 232) — unused
+  - ResponsesStreamConverter (first copy, line 386) — unused
+
+  Entire second Responses API block (lines 1524–2469):
+  - All the duplicate classes (ResponsesInput, ResponsesReasoning,
+  ResponsesTextFormat, ResponsesText, ResponsesTool, ResponsesRequest — second
+  copy, lines 1530–1605)
+  - responses_request_from_dict (line 1607) — unused
+  - responses_tools_to_openai (line 1688) — unused
+  - responses_tool_choice_to_openai (line 1703) — unused
+  - responses_request_to_chat_payload (line 1717) — unused
+  - ResponsesUsage, ResponsesOutputContent, ResponsesOutputItem,
+  ResponsesResponse (lines 1864–1957) — unused
+  - openai_response_to_responses (line 1970) — unused
+  - ResponsesStreamConverter (second copy, line 2078) — unused
+
+  Note: There's no /v1/responses endpoint in atlas_proxy.py. The Responses API
+  code was ported from Ollama but never wired in. The first block is referenced
+  by tests/benchmark.py; the second block is referenced by nothing.
+
+  Other unused helpers:
+  - anthropic_error (line 788) — unused (proxy has its own anthropic_json_error)
+  - streaming_headers (line 804) — unused (proxy inlines these headers)
+  - anthropic_response (line 934) — unused (only used internally by
+  anthropic_sse which is also unused)
+  - anthropic_sse (line 1282) — unused
+  - non_stream_response (line 845) — only used internally by
+  openai_response_from_router (line 888) — but openai_response_from_router is
+  only called when choices is empty/malformed, so this is effectively dead in
+  practice
+  - extract_router_content (line 913) — only used internally by
+  openai_response_from_router (line 888) and openai_response_to_anthropic (line
+  1226, as a fallback when content_blocks is empty)
+  - chunk_payload (line 891) — only used internally by sse_from_text (line 909)
+
+  proxy/system_prompt.py
+
+  - _content_to_text (line 86) — defined, never called
+  - _prepend_to_user_content (line 141) — defined, never called
+
+  proxy/atlas_proxy.py
+
+  - Lines 608–619: dead streaming-error branch. After the if body.get("stream")
+  check at line 587 routed streaming requests to handle_anthropic_stream, by
+  line 608 body.get("stream") is always False. The if body.get("stream"): block
+  returning a StreamingResponse for errors is unreachable.
+  - Lines 130–149 in nvidia_client.py: docstring inside function body. The
+  """Open a streaming chat request...""" block is a stray string literal
+  expression between executable statements. Not dead per se, but it's a
+  misplaced docstring — the real function docstring is at lines 126–130. The
+  stray one describes the same function redundantly.
+
+  proxy/stats.py
+
+  - provider_nvidia counter (lines 19, 26, 60, 107, 130, 143) — tracked but
+  never read. The schema docstring says "Atlas is a single-provider (NVIDIA)
+  proxy, so the per-provider split is collapsed to a single counter" — i.e. it's
+  vestigial. Not harmful, but pure overhead on every record.
+
+  proxy/nvidia_key_store.py
+
+  - fingerprint() (line 168) — used (by atlas_proxy.py via key_fingerprint
+  import alias). Not dead.
+
+  Summary
+
+  ┌──────────────────────┬────────┬────────────────────────────────────────┐
+  │       Location       │ Dead   │                  Type                  │
+  │                      │ lines  │                                        │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ openai_compat.py     │ ~530   │ Unused Responses API port (first copy) │
+  │ lines 11–543         │        │                                        │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ openai_compat.py     │ ~945   │ Unused Responses API port              │
+  │ lines 1524–2469      │        │ (second/extended copy)                 │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ openai_compat.py     │        │ Unused anthropic_error,                │
+  │ misc helpers         │ ~50    │ streaming_headers, anthropic_response, │
+  │                      │        │  anthropic_sse                         │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ system_prompt.py     │ ~30    │ Unused _content_to_text,               │
+  │                      │        │ _prepend_to_user_content               │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ atlas_proxy.py lines │ ~12    │ Unreachable streaming-error branch     │
+  │  608–619             │        │                                        │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ nvidia_client.py     │ ~13    │ Stray docstring inside function body   │
+  │ lines 137–149        │        │                                        │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ stats.py             │ ~6     │ Vestigial counter, written but never   │
+  │ provider_nvidia      │        │ read                                   │
+  └──────────────────────┴────────┴────────────────────────────────────────┘
+
+  Total: ~1,586 lines of dead/unreachable code. The Responses API duplication
+  alone is ~1,475 lines — half of openai_compat.py.
+
+  Want me to delete it? I'd recommend:
+  1. Delete both Responses API blocks (keep tests/benchmark.py's import working
+  by either updating it to use the second copy or removing that test reference)
+  2. Delete the four unused helpers in openai_compat.py
+  3. Delete the two unused helpers in system_prompt.py
+  4. Delete the unreachable branch in atlas_proxy.py:608-619
+  5. Move the stray docstring in nvidia_client.py to merge with the real one
+  6. Strip provider_nvidia from stats.py
+
+✻ Sautéed for 11m 54s

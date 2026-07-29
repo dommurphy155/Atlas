@@ -18,8 +18,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from proxy.nvidia_key_store import NvidiaKeyStore, fingerprint as key_fingerprint
+from proxy.nvidia_key_store import NvidiaKeyStore, fingerprint as nvidia_fingerprint
 from proxy.nvidia_client import NvidiaClient
+from proxy.openrouter_key_store import OpenRouterKeyStore, fingerprint as openrouter_fingerprint
+from proxy.openrouter_client import OpenRouterClient
 from proxy.openai_compat import (
     anthropic_openai_payload,
     anthropic_response_from_blocks,
@@ -42,48 +44,43 @@ from proxy.system_prompt import replace_system_prompt
 # legitimately sends >2 MiB once a long conversation accumulates tool_result
 # file dumps and dense code (GLM-5.2's window is 1M tokens ≈ 4-6 MiB
 # serialized). 256 MiB is ~5x a maxed-out 1M-token request: generous headroom,
-# still bounded. Anything NVIDIA itself rejects comes back as a real upstream
-# 413 that the handlers already surface.
+# still bounded. Anything NVIDIA/OpenRouter itself rejects comes back as a real
+# upstream 413 that the handlers already surface.
 MAX_BODY_BYTES = 256 * 1024 * 1024
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
 
-# Atlas is a single-provider NVIDIA proxy. Every request routes directly to
-# NVIDIA's chat-completions endpoint. No fallback, no provider switching.
+# Provider selection: "nvidia" or "openrouter"
+PROVIDER = os.getenv("ATLAS_PROVIDER", "nvidia").lower()
+
 HOST = os.getenv("ATLAS_PROXY_HOST", "127.0.0.1")
 PORT = int(os.getenv("ATLAS_PROXY_PORT", "8788"))
-KEYS_FILE = os.getenv("ATLAS_KEYS_FILE", str(ROOT_DIR / "data" / "keys.txt"))
-NVIDIA_MODEL = os.getenv("ATLAS_NVIDIA_MODEL", "z-ai/glm-5.2")
-NVIDIA_BASE_URL = os.getenv("ATLAS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
 RELOAD_SECONDS = int(os.getenv("ATLAS_PROXY_RELOAD_SECONDS", "5"))
 REQUEST_TIMEOUT = float(os.getenv("ATLAS_PROXY_REQUEST_TIMEOUT", "300"))
 CONNECT_TIMEOUT = float(os.getenv("ATLAS_PROXY_CONNECT_TIMEOUT", "10"))
+READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "180"))
+KEEPALIVE_SECONDS = float(os.getenv("ATLAS_PROXY_KEEPALIVE_SECONDS", "15"))
+MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
+COOLDOWN_SECONDS = float(os.getenv("ATLAS_PROXY_COOLDOWN_SECONDS", "60"))
+DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
+LOG_FORMAT = os.getenv("ATLAS_PROXY_LOG_FORMAT", "pretty").lower()
+
+# Provider-specific config
+if PROVIDER == "openrouter":
+    KEYS_FILE = os.getenv("ATLAS_OPENROUTER_KEYS_FILE", str(ROOT_DIR / "data" / "openroute_keys.txt"))
+    BASE_URL = os.getenv("ATLAS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    MODEL = os.getenv("ATLAS_OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+    PROVIDER_NAME = "openrouter"
+else:
+    KEYS_FILE = os.getenv("ATLAS_KEYS_FILE", str(ROOT_DIR / "data" / "keys.txt"))
+    BASE_URL = os.getenv("ATLAS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
+    MODEL = os.getenv("ATLAS_NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
+    PROVIDER_NAME = "nvidia"
 
 # Request body logging
 REQUEST_LOG_DIR = os.getenv("ATLAS_PROXY_REQUEST_LOG_DIR", "/tmp/atlas_requests")
 REQUEST_LOG_ENABLED = os.getenv("ATLAS_PROXY_REQUEST_LOG_ENABLED", "1") == "1"
-# Stream read deadline — the dead-stream backstop, NOT the thinking-gap limit.
-# Reasoning models sit silent for long stretches; 60s killed healthy streams.
-# 180s gives a genuinely dead upstream time to be detected without murdering
-# a model that's just thinking. The keepalive wrapper keeps the downstream
-# client alive well before this fires.
-READ_TIMEOUT = float(os.getenv("ATLAS_PROXY_READ_TIMEOUT", "180"))
-# SSE keepalive cadence (seconds). While the upstream is silent, the proxy
-# emits ': keepalive\n\n' comment lines so downstream clients and any
-# middleboxes (nginx proxy_read_timeout, corporate proxies) reset their idle
-# timers instead of killing a healthy-but-quiet stream.
-KEEPALIVE_SECONDS = float(os.getenv("ATLAS_PROXY_KEEPALIVE_SECONDS", "15"))
-MAX_RETRIES = int(os.getenv("ATLAS_PROXY_MAX_RETRIES", "2"))
-# Per-key cooldown (seconds). When a key dies upstream (quota/429/5xx), it is
-# blacklisted for this long before the pool hands it out again. After it
-# elapses the key auto-recovers — acquire() simply stops skipping it. 60s
-# matches a typical NVIDIA rate-limit window.
-COOLDOWN_SECONDS = float(os.getenv("ATLAS_PROXY_COOLDOWN_SECONDS", "60"))
-DEBUG = os.getenv("ATLAS_PROXY_DEBUG", "0") == "1"
-# Log output shape. "pretty" (default) = the colored one-liner. "json" = one
-# JSON object per record, for piping to jq or shipping to an aggregator.
-LOG_FORMAT = os.getenv("ATLAS_PROXY_LOG_FORMAT", "pretty").lower()
 
 
 class _CleanFormatter(logging.Formatter):
@@ -98,8 +95,6 @@ class _CleanFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         ts = self.formatTime(record, "%H:%M:%S")
-        # Color the timestamp by severity so WARN/ERROR still stand out without
-        # burning a column on the level label.
         color = self._COLORS.get(record.levelname, "")
         ts = f"{color}{ts}{self._RESET}" if color else ts
         return f"{ts} {record.getMessage()}"
@@ -121,7 +116,6 @@ class _JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "msg": record.getMessage(),
         }
-        # Lift extra= fields, skipping the logging internals.
         for key, value in record.__dict__.items():
             if key in self._RESERVED or key.startswith("_"):
                 continue
@@ -141,9 +135,13 @@ logging.basicConfig(
     force=True,
 )
 
+# Silence everything that's not our logger
+for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpx._client", "watchfiles"):
+    logging.getLogger(_name).setLevel(logging.CRITICAL)
+
 
 def _short_model(name: str) -> str:
-    """Shorten model name for log display: moonshotai/kimi-k2.6 -> kimi-k2.6"""
+    """Shorten model name for log display: nvidia/nemotron-3-ultra -> nemotron-3-ultra"""
     if "/" in name:
         return name.rsplit("/", 1)[1]
     return name
@@ -151,12 +149,14 @@ def _short_model(name: str) -> str:
 
 logger = logging.getLogger("atlas-proxy")
 
-# Silence everything that's not our logger
-for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpx._client", "watchfiles"):
-    logging.getLogger(_name).setLevel(logging.CRITICAL)
+# Initialize provider-specific clients
+if PROVIDER == "openrouter":
+    key_store = OpenRouterKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
+    provider_client = OpenRouterClient(BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
+else:
+    key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
+    provider_client = NvidiaClient(BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
 
-key_store = NvidiaKeyStore(KEYS_FILE, RELOAD_SECONDS, COOLDOWN_SECONDS)
-nvidia_client = NvidiaClient(NVIDIA_BASE_URL, REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT)
 watch_task: asyncio.Task[None] | None = None
 active_requests = 0
 
@@ -165,16 +165,13 @@ active_requests = 0
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global watch_task
     await key_store.load(force=True)
-    # Zero the since-restart stats bucket so "since restart" means what it
-    # says. all_time keeps accumulating across restarts; only the restart
-    # bucket is cleared. Stamps a fresh started_at too.
     reset_since_restart()
     watch_task = asyncio.create_task(key_store.watch())
-    # Warm the NVIDIA connection pool in the background so the first real
-    # request doesn't pay the TLS handshake. Non-blocking: if NVIDIA is slow
+    # Warm the provider connection pool in the background so the first real
+    # request doesn't pay the TLS handshake. Non-blocking: if provider is slow
     # the first request just warms it itself.
-    prewarm_task = asyncio.create_task(nvidia_client.prewarm())
-    logger.info("atlas started on %s:%s using keys_file=%s model=%s", HOST, PORT, KEYS_FILE, NVIDIA_MODEL)
+    prewarm_task = asyncio.create_task(provider_client.prewarm())
+    logger.info("atlas started on %s:%s using provider=%s keys_file=%s model=%s", HOST, PORT, PROVIDER, KEYS_FILE, MODEL)
     try:
         yield
     finally:
@@ -186,7 +183,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 pass
         prewarm_task.cancel()
         # Graceful drain: if streams are mid-flight, give them up to ~5s to
-        # finish before yanking the NVIDIA connection pool. Without this a
+        # finish before yanking the provider connection pool. Without this a
         # restart kills a reasoning model's stream mid-thought. Once the
         # window elapses (or all streams go idle) we close regardless.
         drain_deadline = 5.0
@@ -194,7 +191,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.info("draining %d active request(s), %.1fs left", active_requests, drain_deadline)
             await asyncio.sleep(0.5)
             drain_deadline -= 0.5
-        await nvidia_client.close()
+        await provider_client.close()
 
 
 app = FastAPI(title="Atlas Proxy", lifespan=lifespan)
@@ -427,8 +424,8 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "atlas-proxy",
-        "provider": "nvidia",
-        "model": NVIDIA_MODEL,
+        "provider": PROVIDER,
+        "model": MODEL,
         "host": HOST,
         "port": PORT,
         "keys_available": key_store.available,
@@ -437,17 +434,17 @@ async def health() -> dict[str, Any]:
 
 @app.get("/stats")
 async def stats() -> dict[str, Any]:
-    nvidia_stats = key_store.stats()
+    provider_stats = key_store.stats()
     proxy_stats = stats_status()
     return {
         "status": "ok",
-        "provider": "nvidia",
-        "model": NVIDIA_MODEL,
-        "nvidia_base_url": NVIDIA_BASE_URL,
+        "provider": PROVIDER,
+        "model": MODEL,
+        "base_url": BASE_URL,
         "keys_file": KEYS_FILE,
-        "nvidia_keys_total": nvidia_stats["total_keys"],
-        "nvidia_keys_available": nvidia_stats["available"],
-        "nvidia_keys_cooling_down": nvidia_stats["cooling_down"],
+        "keys_total": provider_stats["total_keys"],
+        "keys_available": provider_stats["available"],
+        "keys_cooling_down": provider_stats["cooling_down"],
         "active_requests": active_requests,
         "proxy": proxy_stats,
     }
@@ -459,10 +456,10 @@ async def models() -> dict[str, Any]:
         "object": "list",
         "data": [
             {
-                "id": NVIDIA_MODEL,
+                "id": MODEL,
                 "object": "model",
                 "created": 0,
-                "owned_by": "nvidia",
+                "owned_by": PROVIDER,
             }
         ],
     }
@@ -483,17 +480,17 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
     except ValueError as exc:
         return json_error(str(exc), "bad_request", 400)
 
-    model = str(body.get("model") or NVIDIA_MODEL)
+    model = str(body.get("model") or MODEL)
     if model == "default":
-        model = NVIDIA_MODEL
+        model = MODEL
 
-    # Sanitize the client body for NVIDIA's GLM models before it leaves the
+    # Sanitize the client body for provider models before it leaves the
     # proxy. The old code did dict(body) and forwarded every client field
     # verbatim — out-of-range sampling params (temperature=2.5, top_p=2,
     # frequency_penalty=3, ...) and unsupported OpenAI-only fields (top_k,
-    # seed, n, logprobs, reasoning_effort, ...) hit NVIDIA and came back as a
+    # seed, n, logprobs, reasoning_effort, ...) hit the provider and came back as a
     # hard HTTP 400 ("upstream returned 400"). sanitize_openai_payload clamps
-    # the sampling ranges and drops fields GLM-5.2 doesn't accept.
+    # the sampling ranges and drops fields the model doesn't accept.
     upstream_payload = dict(body)
     upstream_payload["model"] = model
     upstream_payload["messages"] = messages
@@ -506,8 +503,8 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
     started = time.monotonic()
     _log_event(
         logging.INFO, rid, "request",
-        f">{rid} {_short_model(model)} stream={'yes' if stream else 'no'} provider=nvidia",
-        model=model, stream=stream, provider="nvidia",
+        f">{rid} {_short_model(model)} stream={'yes' if stream else 'no'} provider={PROVIDER}",
+        model=model, stream=stream, provider=PROVIDER,
     )
 
     # Log full request body
@@ -528,7 +525,7 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
             timings = _new_timings(started)
             line = _format_response_line(rid, 500, model, "?", 0, 0, 0, 0, timings, started, False)
             logger.info(line)
-            record_failure("nvidia")
+            record_failure(PROVIDER)
             raise
 
     active_requests += 1
@@ -557,7 +554,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
     replace_system_prompt(body, provider="anthropic")
 
     try:
-        payload = anthropic_openai_payload(body, NVIDIA_MODEL)
+        payload = anthropic_openai_payload(body, MODEL)
     except ValueError as exc:
         return JSONResponse(
             {"type": "error", "error": {"type": "invalid_request_error", "message": str(exc)}},
@@ -568,9 +565,9 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
     started = time.monotonic()
     _log_event(
         logging.INFO, rid, "request",
-        f">{rid} {requested_model}->{_short_model(NVIDIA_MODEL)} stream={'yes' if body.get('stream') else 'no'} provider=nvidia",
-        model=requested_model, upstream_model=NVIDIA_MODEL,
-        stream=bool(body.get("stream")), provider="nvidia",
+        f">{rid} {requested_model}->{_short_model(MODEL)} stream={'yes' if body.get('stream') else 'no'} provider={PROVIDER}",
+        model=requested_model, upstream_model=MODEL,
+        stream=bool(body.get("stream")), provider=PROVIDER,
     )
 
     # Log full request body (the sanitized upstream payload)
@@ -593,7 +590,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
 
     active_requests += 1
     try:
-        response = await handle_non_stream(NVIDIA_MODEL, payload, rid, started)
+        response = await handle_non_stream(MODEL, payload, rid, started)
     finally:
         active_requests -= 1
 
@@ -604,7 +601,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
         data = json.loads(response.body.decode("utf-8"))
         message = data.get("error", {}).get("message", "proxy error")
         status = response.status_code
-        record_failure("nvidia")
+        record_failure(PROVIDER)
         return JSONResponse(
             {"type": "error", "error": {"type": "api_error", "message": str(message)}},
             status_code=status,
@@ -612,7 +609,7 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
 
     openai_payload = json.loads(response.body.decode("utf-8"))
     pt, ct, tt, tc = _extract_usage(openai_payload)
-    record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
+    record_success(PROVIDER, MODEL, pt, ct, tt, tc)
 
     anthropic_payload = openai_response_to_anthropic(requested_model, openai_payload)
 
@@ -637,7 +634,7 @@ async def handle_non_stream(
     started: float = 0.0,
 ) -> JSONResponse:
     last_status = 503
-    last_message = "no usable NVIDIA keys are available"
+    last_message = f"no usable {PROVIDER} keys are available"
     server_retries = 0
 
     while True:
@@ -647,18 +644,18 @@ async def handle_non_stream(
         acquired = await key_store.acquire()
         timings["queue"] = max(0.0, _acq_start - started) if started else 0.0
         if not acquired:
-            record_failure("nvidia")
-            return json_error("no usable NVIDIA keys are available", "no_usable_keys", 503)
+            record_failure(PROVIDER)
+            return json_error(f"no usable {PROVIDER} keys are available", "no_usable_keys", 503)
         api_key, key_idx = acquired
-        key_id = key_fingerprint(api_key, key_idx)
+        key_id = (openrouter_fingerprint if PROVIDER == "openrouter" else nvidia_fingerprint)(api_key, key_idx)
 
         # preprocess = key acquired → upstream request sent.
         timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
-            response = await nvidia_client.chat(api_key, payload, timings=timings)
+            response = await provider_client.chat(api_key, payload, timings=timings)
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
-            record_failure("nvidia")
+            record_failure(PROVIDER)
             _log_event(
                 logging.WARNING, rid, "timeout",
                 f"<{rid} upstream timeout, cooled key {key_id}",
@@ -678,7 +675,7 @@ async def handle_non_stream(
 
         if response.status_code < 400 and response.json_data is not None:
             pt, ct, tt, tc = _extract_usage(response.json_data)
-            record_success("nvidia", model, pt, ct, tt, tc)
+            record_success(PROVIDER, model, pt, ct, tt, tc)
             # Non-stream: no streamed chunks, so ttft = total (first "token" is
             # the whole body) and stream = 0. The client already set upstream
             # (send→response) and stream=0; mirror upstream into ttft so the
@@ -719,7 +716,7 @@ async def handle_non_stream(
             continue
 
         # 404 / invalid / forbidden — cool the key and try another.
-        # NVIDIA returns 404 (not 401) for rejected keys on some accounts, so
+        # Provider returns 404 (not 401) for rejected keys on some accounts, so
         # treat it as a key problem and rotate rather than surfacing it.
         if response.status_code in {401, 403, 404}:
             await key_store.cooldown_key(api_key)
@@ -747,7 +744,7 @@ async def handle_non_stream(
         # Any other 4xx — surface it, no point retrying.
         break
 
-    record_failure("nvidia")
+    record_failure(PROVIDER)
     return json_error(last_message, "upstream_error", last_status)
 
 
@@ -758,7 +755,7 @@ def _stream_failover_reason(status: int) -> str:
     """Map a failover-worthy upstream status to a short log reason.
 
     A 404 on chat/completions with a valid model+payload means the *key* is
-    rejected upstream (NVIDIA returns 404, not 401, for revoked/invalid keys
+    rejected upstream (provider returns 404, not 401, for revoked/invalid keys
     on some accounts). Cool it and rotate to a healthy key instead of
     surfacing the 404 to the client.
     """
@@ -772,7 +769,7 @@ def _stream_failover_reason(status: int) -> str:
 
 
 def _is_worker_limit_error(error_message: str) -> bool:
-    """Detect NVIDIA worker concurrency limit error in upstream message."""
+    """Detect provider worker concurrency limit error in upstream message."""
     if not error_message:
         return False
     return "worker local total request limit reached" in error_message.lower()
@@ -822,17 +819,17 @@ async def _stream_failover_loop(
         acquired = await key_store.acquire()
         timings["queue"] = max(0.0, _acq_start - started) if started else 0.0
         if not acquired:
-            record_failure("nvidia")
-            return wrap_error(model, "no usable NVIDIA keys are available", 503)
+            record_failure(PROVIDER)
+            return wrap_error(model, f"no usable {PROVIDER} keys are available", 503)
         api_key, key_idx = acquired
-        key_id = key_fingerprint(api_key, key_idx)
+        key_id = (openrouter_fingerprint if PROVIDER == "openrouter" else nvidia_fingerprint)(api_key, key_idx)
 
         def _on_timeout() -> None:
             # Mid-stream timeout: cool the key and record the failure. Without
             # this, a key that returns 200-then-hang recycles with no cooldown
             # and the death is counted as a success in /stats.
             asyncio.create_task(key_store.cooldown_key(api_key))
-            record_failure("nvidia")
+            record_failure(PROVIDER)
             _log_event(
                 logging.WARNING, rid, "timeout",
                 f"<{rid} mid-stream timeout, cooled key {key_id}",
@@ -844,7 +841,7 @@ async def _stream_failover_loop(
             # The stream will end with an error chunk, but we need to cool the
             # key NOW so it doesn't get reused for the next request.
             asyncio.create_task(key_store.cooldown_key(api_key))
-            record_failure("nvidia")
+            record_failure(PROVIDER)
             _log_event(
                 logging.WARNING, rid, "failover",
                 f"<{rid} mid-stream worker limit, cooled key {key_id}",
@@ -855,12 +852,12 @@ async def _stream_failover_loop(
         # the client's _t_send is the send instant (≈ immediately after).
         timings["preprocess"] = max(0.0, time.monotonic() - _acq_start)
         try:
-            status, headers, iterator, error_message = await nvidia_client.stream_chat(
+            status, headers, iterator, error_message = await provider_client.stream_chat(
                 api_key, payload, rid=rid, on_timeout=_on_timeout, on_worker_limit=_on_worker_limit, timings=timings,
             )
         except httpx.TimeoutException:
             await key_store.cooldown_key(api_key)
-            record_failure("nvidia")
+            record_failure(PROVIDER)
             _log_event(
                 logging.WARNING, rid, "timeout",
                 f"<{rid} upstream timeout, cooled key {key_id}",
@@ -885,7 +882,7 @@ async def _stream_failover_loop(
 
         # Worker concurrency limit — cool the key and rotate immediately.
         # This error ("Worker local total request limit reached") indicates
-        # the specific key has hit its per-worker cap on NVIDIA's side.
+        # the specific key has hit its per-worker cap on provider's side.
         if _is_worker_limit_error(error_message):
             await key_store.cooldown_key(api_key)
             _log_event(
@@ -909,7 +906,7 @@ async def _stream_failover_loop(
         # Transient upstream — small retry on the same key pool.
         if status in {500, 502, 503, 504}:
             if server_retries >= MAX_RETRIES:
-                record_failure("nvidia")
+                record_failure(PROVIDER)
                 return wrap_error(model, f"upstream returned {status}", status)
             _log_event(
                 logging.WARNING, rid, "retry",
@@ -924,7 +921,7 @@ async def _stream_failover_loop(
         # of a bare status. The sanitizer should have prevented the common
         # sampling-param 400s; this is the catch-all for anything we didn't
         # anticipate (malformed tool schema, unsupported field, ...).
-        record_failure("nvidia")
+        record_failure(PROVIDER)
         detail = f": {error_message}" if error_message else ""
         _log_event(
             logging.WARNING, rid, "upstream_error",
@@ -933,8 +930,8 @@ async def _stream_failover_loop(
         )
         return wrap_error(model, f"upstream returned {status}{detail}", status)
 
-    record_failure("nvidia")
-    return wrap_error(model, "no usable NVIDIA keys are available", 503)
+    record_failure(PROVIDER)
+    return wrap_error(model, f"no usable {PROVIDER} keys are available", 503)
 
 
 async def handle_stream(
@@ -943,7 +940,7 @@ async def handle_stream(
     rid: str = "",
     started: float = 0.0,
 ) -> StreamingResponse | JSONResponse:
-    """OpenAI-shaped streaming: NVIDIA SSE passed through (usage extracted for stats)."""
+    """OpenAI-shaped streaming: provider SSE passed through (usage extracted for stats)."""
     # The success wrapper needs `model` in scope for stream_router_sse's stats
     # logging; close over it via a partial-style closure. timings flows through
     # so stream_router_sse can stamp ttft/stream (the client filled upstream)
@@ -961,7 +958,7 @@ async def handle_stream(
             stream_with_active_count(
                 keepalive(
                     stream_router_sse(
-                        iterator, model, rid, "nvidia", started, key_id, timings,
+                        iterator, model, rid, PROVIDER, started, key_id, timings,
                         on_worker_limit=_cooldown_on_worker_limit,
                     ),
                     KEEPALIVE_SECONDS,
@@ -1006,7 +1003,7 @@ async def handle_anthropic_stream(
     rid: str = "",
     started: float = 0.0,
 ) -> StreamingResponse:
-    """Stream /v1/messages by translating NVIDIA's OpenAI SSE into Anthropic SSE.
+    """Stream /v1/messages by translating provider's OpenAI SSE into Anthropic SSE.
 
     Same key-failover/retry loop as handle_stream(), but the upstream iterator
     is wrapped in openai_sse_to_anthropic_sse() and errors are Anthropic-shaped.
@@ -1014,13 +1011,13 @@ async def handle_anthropic_stream(
 
     def wrap_success(*, api_key, key_id, status, headers, iterator, rid, started, timings):
         def _on_done(pt: int, ct: int, tt: int, tc: int) -> None:
-            record_success("nvidia", NVIDIA_MODEL, pt, ct, tt, tc)
+            record_success(PROVIDER, MODEL, pt, ct, tt, tc)
             usage_known = bool(pt or ct or tt)
-            line = _format_response_line(rid, 200, NVIDIA_MODEL, key_id, tc,
+            line = _format_response_line(rid, 200, MODEL, key_id, tc,
                                          pt, ct, tt, timings, started, usage_known)
             _log_event(
                 logging.INFO, rid, "response", line,
-                status=200, model=NVIDIA_MODEL, key=key_id,
+                status=200, model=MODEL, key=key_id,
                 tool_calls=tc, in_tokens=pt, out_tokens=ct, total_tokens=tt,
                 elapsed_ms=round((time.monotonic() - started) * 1000) if started else 0,
             )
@@ -1078,10 +1075,10 @@ async def stream_router_sse(
     handful of parses instead of one per token. Tool-call counts stay accurate
     because every tool_call-bearing chunk is still parsed.
 
-    ``timings`` is the per-attempt dict the failover loop seeded and the client
-    populated (upstream/ttft on first byte). We measure ``stream`` here at the
-    forwarding layer (first forwarded chunk → last) since this is the last byte
-    the client sees, then hand the dict to ``_format_response_line``.
+    ``timings`` is the per-attempt dict the failover loop seeded and the
+    client populated (upstream/ttft on first byte). We measure ``stream`` here at
+    the forwarding layer (first forwarded chunk → last) since this is the last
+    byte the client sees, then hand the dict to ``_format_response_line``.
 
     ``on_worker_limit`` is invoked when a worker concurrency limit error is
     detected in an SSE error chunk. Optional.
@@ -1126,7 +1123,7 @@ async def stream_router_sse(
 
             usage = None
             if isinstance(data, dict):
-                # NVIDIA/OpenAI put usage at the chunk top level on the final
+                # Provider/OpenAI put usage at the chunk top level on the final
                 # event; some routers nest it inside choices[-1]. Check both.
                 usage = data.get("usage")
                 if not isinstance(usage, dict):
@@ -1184,7 +1181,7 @@ async def keepalive(iterator: AsyncIterator[bytes], interval: float) -> AsyncIte
     Reasoning models sit silent for long stretches (prefill, thinking). A bare
     idle gap can trip downstream client timeouts and middlebox idle timers
     (nginx ``proxy_read_timeout``, corporate proxies) even when the upstream
-    stream is healthy. While NVIDIA is quiet, emit ``: keepalive\\n\\n`` — an
+    stream is healthy. While provider is quiet, emit ``: keepalive\n\n`` — an
     SSE comment line that conformant clients ignore but that resets every idle
     timer between us and the client.
 
@@ -1193,12 +1190,12 @@ async def keepalive(iterator: AsyncIterator[bytes], interval: float) -> AsyncIte
     is shielded so the keepalive timeout races *against* it without cancelling
     it — cancelling ``__anext__`` would abort the generator's current await
     and drop the chunk it was about to yield. The upstream's own read deadline
-    (NvidiaClient stream client) remains the dead-stream backstop.
+    (provider stream client) remains the dead-stream backstop.
     """
     keepalive_chunk = b": keepalive\n\n"
     iterator = iterator.__aiter__()
     # Flush immediately so the client feels the connection the instant it
-    # opens — before NVIDIA has sent a single byte. Reasoning models can sit
+    # opens — before provider has sent a single byte. Reasoning models can sit
     # silent for 20s+ on prefill; without this the client stares at a dead
     # socket and assumes the request hung. A leading SSE comment is ignored
     # by every conformant parser (OpenAI/Anthropic SDKs, curl, EventSource).
@@ -1240,7 +1237,7 @@ def stream_error(model: str, message: str, status: int) -> StreamingResponse:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Atlas NVIDIA OpenAI-compatible proxy.")
+    parser = argparse.ArgumentParser(description="Run the Atlas multi-provider OpenAI-compatible proxy.")
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", default=PORT, type=int)
     args = parser.parse_args()
@@ -1255,7 +1252,7 @@ def main() -> None:
         # mid-thought. Default (5s) churned connections on reasoning models.
         timeout_keep_alive=75,
         # Bounded concurrency so a flood of requests can't exhaust memory; the
-        # proxy is I/O-bound waiting on NVIDIA so a sane ceiling is plenty.
+        # proxy is I/O-bound waiting on provider so a sane ceiling is plenty.
         limit_concurrency=256,
     )
     uvicorn.Server(config).run()

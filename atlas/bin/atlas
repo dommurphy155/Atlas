@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# atlas - operator CLI for the Atlas NVIDIA proxy
+# atlas - operator CLI for the Atlas multi-provider proxy
 # Controls atlas-proxy.service (systemd) on http://127.0.0.1:8788
 set -euo pipefail
 
@@ -21,10 +21,10 @@ warn() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
 
 usage() {
   cat <<EOF
-${C_BOLD}atlas${C_RESET} - operator CLI for the Atlas NVIDIA proxy
+${C_BOLD}atlas${C_RESET} - operator CLI for the Atlas multi-provider proxy
 
 ${C_BOLD}Usage:${C_RESET}
-  atlas <command>
+  atlas <command> [options]
 
 ${C_BOLD}Commands:${C_RESET}
   start     Start the atlas-proxy systemd service
@@ -42,11 +42,14 @@ ${C_BOLD}Commands:${C_RESET}
               atlas logs --raw             vanilla journalctl (no transform)
               atlas logs -o json | jq .    structured (raw passthrough)
   tokens    Clean token/usage summary since last restart
-  -h, --help, (none)   Show this help
+
+${C_BOLD}Options (for start/restart):${C_RESET}
+  --nvidia       Use NVIDIA provider (default)
+  --openrouter   Use OpenRouter provider
 
 ${C_BOLD}Environment:${C_RESET}
   ATLAS_PROXY_URL   Proxy base URL (default: http://127.0.0.1:8788)
-  ATLAS_SERVICE      systemd unit name (default: atlas-proxy.service)
+  ATLAS_SERVICE     systemd unit name (default: atlas-proxy.service)
 EOF
 }
 
@@ -64,11 +67,28 @@ require_systemctl() {
   fi
 }
 
+# Set provider environment variable in systemd service
+set_provider_env() {
+  local provider="$1"
+  require_systemctl || return 1
+  # Use systemctl set-environment to pass provider to the service
+  systemctl set-environment ATLAS_PROVIDER="$provider"
+}
+
 do_service() {
   local action="$1"
+  local provider="${2:-nvidia}"
   require_systemctl || return 1
   require_root "$action" || return 1
-  info "atlas: $action $ATLAS_SERVICE"
+
+  # Set provider environment before starting/restarting
+  if [[ "$action" == "start" || "$action" == "restart" ]]; then
+    set_provider_env "$provider"
+    info "atlas: $action $ATLAS_SERVICE (provider=$provider)"
+  else
+    info "atlas: $action $ATLAS_SERVICE"
+  fi
+
   if systemctl "$action" "$ATLAS_SERVICE"; then
     ok "atlas: $action done"
   else
@@ -159,7 +179,7 @@ for line in sys.stdin:
     m=str(m)
     m=re.sub(r"\x1b\[[0-9;]*m","",m)
     m=re.sub(r"^\d{2}:\d{2}:\d{2}\s+","",m)
-    m=m.replace(" provider=nvidia","")
+    m=m.replace(" provider=nvidia","").replace(" provider=openrouter","")
     m=re.sub(r" failovers=\d+","",m)
     m=m.replace(" in_tokens="," in=").replace(" out_tokens="," out=")
     # Recolor the three target fields. Operate on the cleaned (ANSI-stripped)
@@ -233,12 +253,32 @@ main() {
     local cmd="${1:-}"
     shift || true
 
+    # Parse provider flags
+    local provider="nvidia"
+    local -a remaining=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --nvidia)
+                provider="nvidia"
+                shift
+                ;;
+            --openrouter)
+                provider="openrouter"
+                shift
+                ;;
+            *)
+                remaining+=("$1")
+                shift
+                ;;
+        esac
+    done
+
     case "$cmd" in
-        start)   do_service start ;;
+        start)   do_service start "$provider" ;;
         stop)    do_service stop ;;
-        restart) do_service restart ;;
+        restart) do_service restart "$provider" ;;
         status)  do_status ;;
-        logs)    do_logs "$@" ;;
+        logs)    do_logs "${remaining[@]}" ;;
         tokens)  do_tokens ;;
         -h|--help|"") usage ;;
         *)
