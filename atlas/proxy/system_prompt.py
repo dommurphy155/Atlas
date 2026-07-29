@@ -83,20 +83,6 @@ def _strip_system_junk(content: str) -> str:
     return content.strip()
 
 
-def _content_to_text(content: Any) -> str:
-    """Flatten a message's content (str or list of blocks) to plain text."""
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                parts.append(str(block.get("text") or ""))
-        return "\n".join(parts)
-    # Fallback: don't stringify arbitrary objects into the payload.
-    return ""
 
 
 def _strip_identity_leak(text: str) -> str:
@@ -138,20 +124,6 @@ def _strip_junk_in_content(content: Any, strip_identity: bool = False) -> Any:
     return content
 
 
-def _prepend_to_user_content(content: Any, override: str) -> Any:
-    """Prepend the override to a user message's content, preserving shape.
-
-    - str content: ``f"{override}\n\n{content}"``.
-    - list content: prepend a fresh text block so the existing typed blocks
-      (images, tool_result, ...) survive intact. The override gets primacy as
-      the first block.
-    """
-    if isinstance(content, list):
-        return [{"type": "text", "text": override}, *content]
-    if isinstance(content, str):
-        return f"{override}\n\n{content}" if content else override
-    # Unknown shape — wrap the override as a text block and keep the original.
-    return [{"type": "text", "text": override}]
 
 
 def _last_user_index(messages: list) -> int | None:

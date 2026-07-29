@@ -605,18 +605,6 @@ async def anthropic_messages(request: Request) -> JSONResponse | StreamingRespon
         message = data.get("error", {}).get("message", "proxy error")
         status = response.status_code
         record_failure("nvidia")
-        if body.get("stream"):
-            error_response = anthropic_response_from_blocks(
-                requested_model,
-                [{"type": "text", "text": f"Atlas proxy error ({status}): {message}"}],
-                "error",
-            )
-            return StreamingResponse(
-                anthropic_sse_from_response(error_response),
-                status_code=200 if status < 500 else status,
-                media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
         return JSONResponse(
             {"type": "error", "error": {"type": "api_error", "message": str(message)}},
             status_code=status,
