@@ -1,4 +1,17 @@
-#!/usr/bin/env bash
+"""CLI binary installation."""
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Optional
+
+from .console import get_console
+from .platform import PlatformInfo, detect_platform
+
+console = get_console()
+
+CLI_BASH = """#!/usr/bin/env bash
 # atlas - operator CLI for the Atlas multi-provider proxy
 # Controls atlas-proxy.service (systemd) on http://127.0.0.1:8788
 set -euo pipefail
@@ -8,16 +21,16 @@ ATLAS_SERVICE="${ATLAS_SERVICE:-atlas-proxy.service}"
 
 # --- color setup (TTY-aware) ---
 if [[ -t 1 ]]; then
-  C_GREEN=$'\033[32m'; C_CYAN=$'\033[36m'; C_YELLOW=$'\033[33m'
-  C_RED=$'\033[31m'; C_BOLD=$'\033[1m'; C_RESET=$'\033[0m'
+  C_GREEN=$'\\033[32m'; C_CYAN=$'\\033[36m'; C_YELLOW=$'\\033[33m'
+  C_RED=$'\\033[31m'; C_BOLD=$'\\033[1m'; C_RESET=$'\\033[0m'
 else
   C_GREEN=""; C_CYAN=""; C_YELLOW=""; C_RED=""; C_BOLD=""; C_RESET=""
 fi
 
-err()  { printf '%s%s%s\n' "$C_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s%s%s\n' "$C_CYAN" "$*" "$C_RESET"; }
-ok()   { printf '%s%s%s\n' "$C_GREEN" "$*" "$C_RESET"; }
-warn() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
+err()  { printf '%s%s%s\\n' "$C_RED" "$*" "$C_RESET" >&2; }
+info() { printf '%s%s%s\\n' "$C_CYAN" "$*" "$C_RESET"; }
+ok()   { printf '%s%s%s\\n' "$C_GREEN" "$*" "$C_RESET"; }
+warn() { printf '%s%s%s\\n' "$C_YELLOW" "$*" "$C_RESET"; }
 
 usage() {
   cat <<EOF
@@ -97,15 +110,15 @@ do_service() {
 pprint_json() {
   local body="$1"
   if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$body" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$body"
+    printf '%s' "$body" | python3 -m json.tool 2>/dev/null || printf '%s\\n' "$body"
   else
-    printf '%s\n' "$body"
+    printf '%s\\n' "$body"
   fi
 }
 
 probe() {
   local label="$1" path="$2"
-  printf '\n%s--- %s %s%s\n' "$C_BOLD" "$label" "$ATLAS_PROXY_URL$path" "$C_RESET"
+  printf '\\n%s--- %s %s%s\\n' "$C_BOLD" "$label" "$ATLAS_PROXY_URL$path" "$C_RESET"
   local body
   if body=$(curl -sS --max-time 3 -m 3 "${ATLAS_PROXY_URL}${path}" 2>/dev/null); then
     if [[ -z "$body" ]]; then
@@ -130,8 +143,8 @@ do_status() {
 _atlas_log_filter() {
   python3 -c '
 import sys,json,datetime,re
-RESET="\033[0m"
-GREEN="\033[32m"; ORANGE="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
+RESET="\\033[0m"
+GREEN="\\033[32m"; ORANGE="\\033[33m"; RED="\\033[31m"; CYAN="\\033[36m"
 color = sys.stdout.isatty()
 def paint(c,s): return f"{c}{s}{RESET}" if color else s
 def status_color(s):
@@ -158,15 +171,15 @@ for line in sys.stdin:
     m=e.get("MESSAGE","")
     if isinstance(m,list): m=bytes(m).decode("utf-8","replace")
     m=str(m)
-    m=re.sub(r"\x1b\[[0-9;]*m","",m)
-    m=re.sub(r"^\d{2}:\d{2}:\d{2}\s+","",m)
+    m=re.sub(r"\\x1b\\[[0-9;]*m","",m)
+    m=re.sub(r"^\\d{2}:\\d{2}:\\d{2}\\s+","",m)
     m=m.replace(" provider=nvidia","").replace(" provider=openrouter","")
-    m=re.sub(r" failovers=\d+","",m)
+    m=re.sub(r" failovers=\\d+","",m)
     m=m.replace(" in_tokens="," in=").replace(" out_tokens="," out=")
     def c_status(mm):
         c=status_color(mm.group(1))
         return f"status={paint(c,mm.group(1))}" if c else mm.group(0)
-    m=re.sub(r"status=(\d+)",c_status,m)
+    m=re.sub(r"status=(\\d+)",c_status,m)
     def c_total(mm):
         c=total_color(mm.group(1))
         return f"total={paint(c,mm.group(1))}s" if c else mm.group(0)
@@ -258,3 +271,119 @@ main() {
 }
 
 main "$@"
+"""
+
+CLI_WINDOWS = """@echo off
+:: atlas.cmd - Windows CLI for Atlas Proxy
+:: Requires: atlas-proxy.service installed via setup
+
+set ATLAS_PROXY_URL=http://127.0.0.1:8788
+set ATLAS_SERVICE=atlas-proxy
+
+if "%1"=="" (
+    echo Usage: atlas ^<command^> [options]
+    echo Commands: start, stop, restart, status, logs, keys
+    goto :eof
+)
+
+if "%1"=="status" (
+    systemctl status %ATLAS_SERVICE% 2>nul
+    curl -s %ATLAS_PROXY_URL%/health
+    curl -s %ATLAS_PROXY_URL%/health/keys
+    goto :eof
+)
+
+if "%1"=="start" (
+    set ATLAS_PROVIDER=%2
+    if "%ATLAS_PROVIDER%"=="" set ATLAS_PROVIDER=openrouter
+    net start %ATLAS_SERVICE%
+    goto :eof
+)
+
+if "%1"=="stop" (
+    net stop %ATLAS_SERVICE%
+    goto :eof
+)
+
+if "%1"=="restart" (
+    set ATLAS_PROVIDER=%2
+    if "%ATLAS_PROVIDER%"=="" set ATLAS_PROVIDER=openrouter
+    net stop %ATLAS_SERVICE% && net start %ATLAS_SERVICE%
+    goto :eof
+)
+
+if "%1"=="logs" (
+    powershell -Command "Get-WinEvent -LogName 'Application' -ProviderName '%ATLAS_SERVICE%' -MaxEvents 50 | Format-Table TimeCreated, Message -AutoSize"
+    goto :eof
+)
+
+if "%1"=="keys" (
+    curl -s %ATLAS_PROXY_URL%/health/keys | python -m json.tool
+    goto :eof
+)
+
+echo Unknown command: %1
+"""
+
+
+def install_cli_unix(platform_info: PlatformInfo, project_dir: Path) -> bool:
+    """Install atlas CLI on Unix (Linux/macOS)."""
+    cli_src = project_dir / "bin" / "atlas"
+    cli_dst = platform_info.bin_dir / "atlas"
+
+    try:
+        # Ensure source exists
+        cli_src.parent.mkdir(parents=True, exist_ok=True)
+        cli_src.write_text(CLI_BASH)
+        cli_src.chmod(0o755)
+
+        # Remove existing
+        if cli_dst.exists() or cli_dst.is_symlink():
+            if os.geteuid() == 0:
+                cli_dst.unlink()
+            else:
+                subprocess.run(["sudo", "rm", "-f", str(cli_dst)], check=True)
+
+        # Symlink
+        if os.geteuid() == 0:
+            cli_dst.symlink_to(cli_src)
+        else:
+            subprocess.run(["sudo", "ln", "-sf", str(cli_src), str(cli_dst)], check=True)
+
+        console.success(f"Installed CLI: {cli_dst} -> {cli_src}")
+        return True
+    except Exception as e:
+        console.error(f"Failed to install CLI: {e}")
+        return False
+
+
+def install_cli_windows(platform_info: PlatformInfo, project_dir: Path) -> bool:
+    """Install atlas CLI on Windows."""
+    try:
+        # Write .cmd shim
+        cli_src = project_dir / "bin" / "atlas.cmd"
+        cli_src.parent.mkdir(parents=True, exist_ok=True)
+        cli_src.write_text(CLI_WINDOWS)
+
+        # Add to user PATH via setx
+        paths_to_add = [str(platform_info.venv_bin), str(project_dir / "bin")]
+        current_path = os.environ.get("PATH", "")
+        for p in paths_to_add:
+            if p not in current_path:
+                subprocess.run(["setx", "PATH", f"{p};{current_path}"], check=False)
+                current_path = f"{p};{current_path}"
+
+        console.success(f"Windows CLI shim: {cli_src}")
+        console.info("Added to user PATH (restart shell to take effect)")
+        return True
+    except Exception as e:
+        console.error(f"Failed to install Windows CLI: {e}")
+        return False
+
+
+def install_cli(platform_info: PlatformInfo, project_dir: Path) -> bool:
+    """Install CLI for current platform."""
+    if platform_info.is_windows:
+        return install_cli_windows(platform_info, project_dir)
+    else:
+        return install_cli_unix(platform_info, project_dir)
