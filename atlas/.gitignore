@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 data/keys.txt
+data/openroute_keys.txt
 data/proxy_stats.json
 .remember/
 .plugin-config/
