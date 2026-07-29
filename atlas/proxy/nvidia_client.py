@@ -123,18 +123,13 @@ class NvidiaClient:
         on_worker_limit: Callable[[], None] | None = None,
         timings: dict[str, float] | None = None,
     ) -> tuple[int, httpx.Headers, AsyncIterator[bytes], str]:
-        """Streaming chat. If ``timings`` is a dict, it is populated with
-        ``upstream`` (send->first byte), ``ttft`` (request start->first byte)
-        and ``stream`` (first byte->last byte) in seconds, for the proxy's log
-        line. The handler seeds ``__started`` (request-received monotonic) into
-        ``timings`` so ttft can span queue+preprocess+upstream. Monotonic clock."""
-        import time as _t
-        _t_send = _t.monotonic()
-        if timings is not None:
-            timings.setdefault("upstream", 0.0)
-            timings.setdefault("stream", 0.0)
-            timings.setdefault("ttft", 0.0)
-        """Open a streaming chat request.
+        """Streaming chat.
+
+        If ``timings`` is a dict, it is populated with ``upstream`` (send->first
+        byte), ``ttft`` (request start->first byte) and ``stream`` (first byte->
+        last byte) in seconds, for the proxy's log line. The handler seeds
+        ``__started`` (request-received monotonic) into ``timings`` so ttft can
+        span queue+preprocess+upstream. Monotonic clock.
 
         Returns ``(status, headers, iterator, error_message)``. ``error_message``
         is the real upstream message (e.g. NVIDIA's "Validation: Temperature
@@ -147,6 +142,12 @@ class NvidiaClient:
         record a failure, which the iterator's own except cannot do directly
         without a handle to the key store.
         """
+        import time as _t
+        _t_send = _t.monotonic()
+        if timings is not None:
+            timings.setdefault("upstream", 0.0)
+            timings.setdefault("stream", 0.0)
+            timings.setdefault("ttft", 0.0)
         request = self._stream_client.build_request(
             "POST",
             self.chat_url,
