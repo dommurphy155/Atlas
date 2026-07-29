@@ -234,19 +234,20 @@ do_logs() {
 }
 
 do_tokens() {
-  # Resolve the atlas project dir from the CLI symlink so this works regardless
-  # of cwd. The symlink at /usr/local/bin/atlas -> .../atlas/bin/atlas resolves
-  # to the real script, and two dirname's climb to the project root. No hardcoded
-  # fallback — if the venv isn't there, say so instead of guessing a wrong path.
-  local cli_self proj_dir
-  cli_self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "$0")"
-  proj_dir="$(dirname "$(dirname "$cli_self")")"
-  if [[ ! -x "$proj_dir/.venv/bin/python" ]]; then
-    err "atlas venv not found at $proj_dir/.venv (re-run setup/install.sh)"
-    return 1
+  require_systemctl || return 1
+
+  # Use the new proxy's /health/keys endpoint for detailed key stats
+  info "atlas: fetching key stats from $ATLAS_PROXY_URL/health/keys"
+  local body
+  if body=$(curl -sS --max-time 5 -m 5 "${ATLAS_PROXY_URL}/health/keys" 2>/dev/null); then
+    if [[ -n "$body" ]]; then
+      pprint_json "$body"
+    else
+      warn "empty response from /health/keys"
+    fi
+  else
+    warn "proxy not responding on /health/keys"
   fi
-  # Run from the project dir so `proxy.token_tracker` resolves on sys.path.
-  (cd "$proj_dir" && ./.venv/bin/python -m proxy.token_tracker)
 }
 
 main() {

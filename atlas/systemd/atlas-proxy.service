@@ -7,7 +7,7 @@
 #
 # Service name: atlas-proxy.service
 # Port: 8788 (ATLAS_PROXY_PORT)
-# Providers: NVIDIA (default) or OpenRouter (via ATLAS_PROVIDER=openrouter)
+# Provider: OpenRouter (OpenAI + Anthropic compatible)
 
 [Unit]
 Description=Atlas Multi-Provider Proxy
@@ -28,23 +28,16 @@ Environment=HOME=__ATLAS_HOME__
 Environment=PATH=__VENV_BIN__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=ATLAS_PROXY_HOST=127.0.0.1
 Environment=ATLAS_PROXY_PORT=8788
-Environment=ATLAS_PROVIDER=nvidia
-Environment=ATLAS_NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
-Environment=ATLAS_NVIDIA_MODEL=nvidia/nemotron-3-ultra-550b-a55b
 Environment=ATLAS_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-Environment=ATLAS_OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+Environment=ATLAS_OPENROUTER_MODEL=nemotron-3-ultra-550b-a55b:free
 Environment=ATLAS_OPENROUTER_KEYS_FILE=/root/openrouter/scripts/data/openroute_keys.txt
-Environment=ATLAS_PROXY_RELOAD_SECONDS=5
-Environment=ATLAS_PROXY_COOLDOWN_SECONDS=60
-Environment=ATLAS_PROXY_REQUEST_TIMEOUT=150
-Environment=ATLAS_PROXY_CONNECT_TIMEOUT=15
-Environment=ATLAS_PROXY_READ_TIMEOUT=300
-Environment=ATLAS_PROXY_KEEPALIVE_SECONDS=150
-Environment=ATLAS_PROXY_MAX_RETRIES=2
+Environment=ATLAS_PROXY_COOLDOWN_SECONDS=45
+Environment=ATLAS_PROXY_SUSPEND_SECONDS=600
+Environment=ATLAS_PROXY_MAX_ERRORS=8
 Environment=ATLAS_PROXY_DEBUG=0
 
 # Launch the proxy app module from the venv python.
-ExecStart=__VENV_PYTHON__ -m proxy.atlas_proxy
+ExecStart=__VENV_PYTHON__ -m proxy.main
 
 Restart=always
 RestartSec=5
