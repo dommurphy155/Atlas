@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,10 +18,27 @@ def _stringify_args(args: Any) -> str:
         return args
     try:
         import orjson
-
         return orjson.dumps(args).decode()
     except Exception:
         return str(args)
+
+
+def _has_anthropic_format(messages: List[Dict]) -> bool:
+    """Check if ANY message has Anthropic-style content blocks (tool_use, tool_result, thinking, etc.)."""
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") in (
+                    "tool_use", "tool_result", "thinking", "redacted_thinking", "image"
+                ):
+                    return True
+    return False
+
+
+def _has_tool_role(messages: List[Dict]) -> bool:
+    """Check if any message has role='tool' (OpenAI tool result format)."""
+    return any(msg.get("role") == "tool" for msg in messages)
 
 
 def anthropic_tools_to_openai(tools: Optional[List[Dict]]) -> Optional[List[Dict]]:
@@ -449,6 +467,26 @@ def translate_usage_openai_to_anthropic(usage: Optional[Dict]) -> Optional[Dict]
     return out
 
 
+def _has_anthropic_format(messages: list) -> bool:
+    """Check if any message has Anthropic-style content blocks (tool_use, tool_result, thinking, image)."""
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") in (
+                    "tool_use", "tool_result", "thinking", "redacted_thinking", "image"
+                ):
+                    return True
+    return False
+
+
+def _has_tool_role(messages: list) -> bool:
+    """Check if any message has role='tool' (OpenAI tool result format)."""
+    return any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
+
+
 def prepare_chat_body(body: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize an incoming chat/completions body for OpenRouter."""
     from .config import FORCE_DEFAULT_MODEL, OPENROUTER_MODEL
@@ -465,20 +503,8 @@ def prepare_chat_body(body: Dict[str, Any]) -> Dict[str, Any]:
 
     msgs = body.get("messages")
     if msgs and isinstance(msgs, list) and msgs:
-        first = msgs[0] if isinstance(msgs[0], dict) else {}
-        first_content = first.get("content")
-        if isinstance(first_content, list) and any(
-            isinstance(b, dict)
-            and b.get("type")
-            in (
-                "tool_use",
-                "tool_result",
-                "thinking",
-                "redacted_thinking",
-                "image",
-            )
-            for b in first_content
-        ):
+        # M5 FIX: Scan ALL messages for Anthropic format, not just first
+        if _has_anthropic_format(msgs) or _has_tool_role(msgs):
             system = body.pop("system", None)
             body["messages"] = anthropic_messages_to_openai(msgs, system)
 
@@ -503,6 +529,159 @@ def prepare_chat_body(body: Dict[str, Any]) -> Dict[str, Any]:
         body["messages"] = _inject_system_override_openai(body["messages"])
 
     return body
+
+
+# =============================================================================
+# OpenAI Responses API ↔ Anthropic Messages translation
+# =============================================================================
+
+def openai_responses_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert OpenAI Responses API format to Anthropic Messages format."""
+    messages = []
+
+    # Handle 'input' field (string, list of strings, or list of dicts)
+    inp = body.get("input")
+    if isinstance(inp, str):
+        messages.append({"role": "user", "content": inp})
+    elif isinstance(inp, list):
+        for item in inp:
+            if isinstance(item, str):
+                messages.append({"role": "user", "content": item})
+            elif isinstance(item, dict):
+                role = item.get("role", "user")
+                content = item.get("content") or item.get("text", "")
+                messages.append({"role": role, "content": content})
+
+    # Handle 'instructions' → system prompt
+    system = body.get("instructions", "")
+
+    # Tools
+    tools = body.get("tools")
+    if tools:
+        tools = openai_tools_to_anthropic(tools)
+
+    # Tool choice
+    tool_choice = body.get("tool_choice")
+    if tool_choice:
+        tool_choice = convert_tool_choice_openai_to_anthropic(tool_choice)
+
+    # Reasoning → thinking
+    thinking = None
+    if "reasoning" in body:
+        reasoning = body["reasoning"]
+        if isinstance(reasoning, dict):
+            effort = reasoning.get("effort")
+            max_tok = reasoning.get("max_tokens")
+            if effort in ("none", None) and not max_tok:
+                thinking = {"type": "disabled"}
+            elif max_tok:
+                thinking = {"type": "enabled", "budget_tokens": max_tok}
+            else:
+                thinking = {"type": "adaptive"}
+                if effort and effort not in ("none",):
+                    thinking["effort"] = effort
+
+    # Stop sequences
+    stop_sequences = None
+    if "stop" in body:
+        stop = body["stop"]
+        if isinstance(stop, str):
+            stop_sequences = [stop]
+        elif isinstance(stop, list):
+            stop_sequences = stop
+
+    return {
+        "model": body.get("model", "nemotron-3-ultra-550b-a55b:free"),
+        "messages": messages,
+        "system": system if system else None,
+        "tools": tools,
+        "tool_choice": tool_choice,
+        "thinking": thinking,
+        "stop_sequences": stop_sequences,
+        "stream": body.get("stream", False),
+        "max_tokens": body.get("max_output_tokens", 4096),
+        "temperature": body.get("temperature", 1.0),
+        "top_p": body.get("top_p", 1.0),
+    }
+
+
+def anthropic_to_openai_responses(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Anthropic Messages format to OpenAI Responses API format."""
+    input_items = []
+
+    # Convert messages to input format
+    for msg in body.get("messages", []):
+        role = msg.get("role", "user")
+        content = msg.get("content")
+
+        if isinstance(content, str):
+            input_items.append({"role": role, "content": content})
+        elif isinstance(content, list):
+            # Handle Anthropic content blocks
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    btype = block.get("type")
+                    if btype == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif btype == "tool_use":
+                        input_items.append({
+                            "type": "function_call",
+                            "call_id": block.get("id", ""),
+                            "name": block.get("name", ""),
+                            "arguments": block.get("input", {}),
+                        })
+                    elif btype == "tool_result":
+                        input_items.append({
+                            "type": "function_call_output",
+                            "call_id": block.get("tool_use_id", ""),
+                            "output": block.get("content", ""),
+                        })
+            if text_parts:
+                input_items.append({"role": role, "content": "\n".join(text_parts)})
+
+    # System → instructions
+    instructions = None
+    system = body.get("system")
+    if isinstance(system, list):
+        instructions = "\n".join(b.get("text", "") for b in system if b.get("type") == "text")
+    elif isinstance(system, str):
+        instructions = system
+
+    # Tools
+    tools = body.get("tools")
+    if tools:
+        tools = anthropic_tools_to_openai(tools)
+
+    # Tool choice
+    tool_choice = body.get("tool_choice")
+    if tool_choice:
+        tool_choice = convert_tool_choice_anthropic_to_openai(tool_choice)
+
+    # Thinking → reasoning
+    reasoning = None
+    thinking = body.get("thinking")
+    if thinking and isinstance(thinking, dict):
+        ttype = thinking.get("type")
+        if ttype == "enabled":
+            reasoning = {"max_tokens": thinking.get("budget_tokens", 4096)}
+        elif ttype == "adaptive":
+            reasoning = {"effort": "high"}
+        elif ttype == "disabled":
+            reasoning = {"effort": "none"}
+
+    return {
+        "model": body.get("model", "nemotron-3-ultra-550b-a55b:free"),
+        "input": input_items,
+        "instructions": instructions,
+        "tools": tools,
+        "tool_choice": tool_choice,
+        "reasoning": reasoning,
+        "stream": body.get("stream", False),
+        "max_output_tokens": body.get("max_tokens", 4096),
+        "temperature": body.get("temperature", 1.0),
+        "top_p": body.get("top_p", 1.0),
+    }
 
 
 def prepare_messages_body(body: Dict[str, Any]) -> Dict[str, Any]:

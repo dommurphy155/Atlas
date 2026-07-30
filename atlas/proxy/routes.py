@@ -18,7 +18,11 @@ from .config import (
     get_logger,
 )
 from .proxy import ProxyCore
-from .translation import prepare_chat_body, prepare_messages_body
+from .translation import (
+    prepare_chat_body,
+    prepare_messages_body,
+    openai_responses_to_anthropic,
+)
 from .utils import dumps, loads, request_id
 
 log = get_logger(__name__)
@@ -202,8 +206,8 @@ async def messages(request: Request) -> Response:
 @router.post("/v1/responses")
 async def responses(request: Request) -> Response:
     """
-    OpenAI Responses API → best-effort map to OpenRouter chat/completions.
-    Translates `input` / `instructions` into messages when needed.
+    OpenAI Responses API → Anthropic Messages via OpenRouter.
+    Full bidirectional translation support.
     """
     assert proxy is not None
     rid = request_id(request)
@@ -233,40 +237,20 @@ async def responses(request: Request) -> Response:
             headers={"x-request-id": rid},
         )
 
-    if "messages" not in body and "input" in body:
-        inp = body.pop("input")
-        messages_list: List[Dict] = []
-        if isinstance(inp, str):
-            messages_list = [{"role": "user", "content": inp}]
-        elif isinstance(inp, list):
-            for item in inp:
-                if isinstance(item, str):
-                    messages_list.append({"role": "user", "content": item})
-                elif isinstance(item, dict):
-                    role = item.get("role", "user")
-                    content = item.get("content") or item.get("text") or ""
-                    messages_list.append({"role": role, "content": content})
-        body["messages"] = messages_list
-
-    if "instructions" in body and "messages" in body:
-        instr = body.pop("instructions")
-        body["messages"] = [
-            {"role": "system", "content": instr}
-        ] + body["messages"]
-
-    body = prepare_chat_body(body)
+    # Convert Responses API → Anthropic Messages format
+    body = openai_responses_to_anthropic(body)
     stream = bool(body.get("stream", False))
     payload = dumps(body)
 
     log.info(
-        "req=%s provider=openai endpoint=responses→chat model=%s stream=%s",
+        "req=%s provider=openai endpoint=responses→messages model=%s stream=%s",
         rid,
         body.get("model"),
         stream,
     )
     return await proxy.forward(
         "POST",
-        OPENROUTER_CHAT,
+        OPENROUTER_MESSAGES,
         body=payload,
         stream=stream,
         request_id=rid,
