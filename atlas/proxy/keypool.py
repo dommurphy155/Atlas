@@ -15,6 +15,8 @@ from .config import (
     MAX_CONSECUTIVE_ERRORS,
     RETRY_STATUSES,
     SUSPEND_SECONDS,
+    get_keys_file,
+    get_fallback_keys_file,
     get_logger,
 )
 
@@ -185,7 +187,7 @@ class KeyPool:
 
 
 def load_keys(path: str) -> List[str]:
-    """Load keys from a text file. Ignores blanks, comments, and non-sk- lines."""
+    """Load keys from a text file. Ignores blanks, comments, and non-sk-/nvapi- lines."""
     if not os.path.isfile(path):
         return []
     keys: List[str] = []
@@ -194,9 +196,9 @@ def load_keys(path: str) -> List[str]:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            # tolerate "KEY=sk-…" or plain key
-            if "=" in line and not line.startswith("sk-"):
+            # tolerate "KEY=sk-…" or "KEY=nvapi-…" or plain key
+            if "=" in line and not (line.startswith("sk-") or line.startswith("nvapi-")):
                 line = line.split("=", 1)[-1].strip()
-            if line.startswith("sk-"):
+            if line.startswith("sk-") or line.startswith("nvapi-"):
                 keys.append(line)
     return keys

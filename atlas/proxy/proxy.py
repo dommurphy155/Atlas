@@ -17,15 +17,16 @@ from .config import (
     MAX_CONNECTIONS,
     MAX_KEEPALIVE_CONNECTIONS,
     MAX_RETRIES,
-    OPENROUTER_MODELS,
     POOL_TIMEOUT,
     PREWARM_INTERVAL,
     READ_TIMEOUT,
     RETRY_STATUSES,
     WRITE_TIMEOUT,
+    get_models_endpoint,
     get_logger,
 )
 from .keypool import KeyPool
+from .translation import translate_stream_openai_to_anthropic, translate_stream_anthropic_to_openai
 from .utils import dumps, is_openai_done_frame
 
 log = get_logger(__name__)
@@ -82,7 +83,7 @@ class ProxyCore:
         key, _ = self.pool.next_key()
         try:
             resp = await self.client.get(
-                OPENROUTER_MODELS,
+                get_models_endpoint(),
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=10.0,
             )
@@ -321,15 +322,35 @@ class ProxyCore:
         out_headers["connection"] = "keep-alive"
         out_headers["x-request-id"] = request_id
 
+        # Determine if we need to translate the stream
+        # Check if request is for chat/completions (OpenAI) → translate to Anthropic
+        # or messages (Anthropic) → translate to OpenAI
+        translate_openai_to_anthropic = "/chat/completions" in url
+        translate_anthropic_to_openai = "/messages" in url
+
         async def event_generator() -> AsyncIterator[bytes]:
             """
-            Pass-through SSE with minimal filtering:
+            SSE with optional translation:
               • drop OpenAI-style `data: [DONE]` trailers
               • drop bare `event: data` frames
-              • yield every other chunk immediately (no re-buffering)
+              • translate between OpenAI and Anthropic SSE formats when needed
+              • yield every chunk immediately (no re-buffering)
             """
             buf = b""
             try:
+                if translate_openai_to_anthropic:
+                    # Use translation generator
+                    async for chunk in translate_stream_openai_to_anthropic(upstream):
+                        yield chunk
+                    return
+
+                if translate_anthropic_to_openai:
+                    # Use translation generator
+                    async for chunk in translate_stream_anthropic_to_openai(upstream):
+                        yield chunk
+                    return
+
+                # Pass-through (no translation)
                 async for raw in upstream.aiter_raw():
                     if not raw:
                         continue

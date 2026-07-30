@@ -39,7 +39,13 @@ def _env_int(key: str, default: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Model / upstream
+# Provider selection
+# ---------------------------------------------------------------------------
+PROVIDER: str = _env("ATLAS_PROVIDER", _env("PROVIDER", "openrouter"))  # "openrouter" | "nvidia"
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter
 # ---------------------------------------------------------------------------
 OPENROUTER_BASE_URL: str = _env("ATLAS_OPENROUTER_BASE_URL", _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
 OPENROUTER_CHAT: str = f"{OPENROUTER_BASE_URL}/chat/completions"
@@ -54,9 +60,21 @@ FORCE_DEFAULT_MODEL: bool = _env_bool("FORCE_DEFAULT_MODEL", True)
 """If True, always override the client-supplied model with OPENROUTER_MODEL."""
 
 # ---------------------------------------------------------------------------
+# NVIDIA
+# ---------------------------------------------------------------------------
+NVIDIA_BASE_URL: str = _env("ATLAS_NVIDIA_BASE_URL", _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"))
+NVIDIA_CHAT: str = f"{NVIDIA_BASE_URL}/chat/completions"
+NVIDIA_MESSAGES: str = f"{NVIDIA_BASE_URL}/messages"
+NVIDIA_MODELS: str = f"{NVIDIA_BASE_URL}/models"
+
+NVIDIA_MODEL: str = _env("ATLAS_NVIDIA_MODEL", _env("NVIDIA_MODEL", "nvidia/nemotron-3-ultra"))
+"""Default model for NVIDIA provider."""
+
+# ---------------------------------------------------------------------------
 # Keys
 # ---------------------------------------------------------------------------
 KEY_FILE: str = _env("ATLAS_OPENROUTER_KEYS_FILE", _env("KEY_FILE", "/root/openrouter/scripts/data/openroute_keys.txt"))
+NVIDIA_KEY_FILE: str = _env("ATLAS_NVIDIA_KEYS_FILE", _env("NVIDIA_KEY_FILE", "/root/claude/atlas/data/nvda_keys.txt"))
 FALLBACK_KEY_FILE: str = _env("FALLBACK_KEY_FILE", "/tmp/fake_keys/openroute_keys.txt")
 
 # ---------------------------------------------------------------------------
@@ -122,19 +140,87 @@ else:
 # ---------------------------------------------------------------------------
 CORS_ORIGINS: List[str] = [o.strip() for o in _env("CORS_ORIGINS", "*").split(",") if o.strip()]
 
+# ---------------------------------------------------------------------------
+# Dynamic config getters (provider-aware)
+# ---------------------------------------------------------------------------
+def get_chat_endpoint() -> str:
+    """Get the chat completions endpoint for the current provider."""
+    if PROVIDER == "nvidia":
+        return NVIDIA_CHAT
+    return OPENROUTER_CHAT
+
+
+def get_messages_endpoint() -> str:
+    """Get the messages endpoint for the current provider."""
+    if PROVIDER == "nvidia":
+        return NVIDIA_MESSAGES
+    return OPENROUTER_MESSAGES
+
+
+def get_models_endpoint() -> str:
+    """Get the models endpoint for the current provider."""
+    if PROVIDER == "nvidia":
+        return NVIDIA_MODELS
+    return OPENROUTER_MODELS
+
+
+def get_default_model() -> str:
+    """Get the default model for the current provider."""
+    if PROVIDER == "nvidia":
+        return NVIDIA_MODEL
+    return OPENROUTER_MODEL
+
+
+def get_keys_file() -> str:
+    """Get the keys file for the current provider."""
+    if PROVIDER == "nvidia":
+        return NVIDIA_KEY_FILE
+    return KEY_FILE
+
+
+def get_fallback_keys_file() -> str:
+    """Get the fallback keys file."""
+    return FALLBACK_KEY_FILE
+
+
+def get_provider() -> str:
+    """Get the current provider."""
+    return PROVIDER
+
+
 # Re-export logger helpers
 __all__ = [
-    "OPENROUTER_MODEL",
-    "FORCE_DEFAULT_MODEL",
+    # Provider
+    "PROVIDER",
+    "get_provider",
+    "get_chat_endpoint",
+    "get_messages_endpoint",
+    "get_models_endpoint",
+    "get_default_model",
+    "get_keys_file",
+    "get_fallback_keys_file",
+    # OpenRouter
     "OPENROUTER_BASE_URL",
     "OPENROUTER_CHAT",
     "OPENROUTER_MESSAGES",
     "OPENROUTER_MODELS",
     "OPENROUTER_RESPONSES",
+    "OPENROUTER_MODEL",
+    "FORCE_DEFAULT_MODEL",
+    # NVIDIA
+    "NVIDIA_BASE_URL",
+    "NVIDIA_CHAT",
+    "NVIDIA_MESSAGES",
+    "NVIDIA_MODELS",
+    "NVIDIA_MODEL",
+    # Keys
     "KEY_FILE",
+    "NVIDIA_KEY_FILE",
     "FALLBACK_KEY_FILE",
+    # Server
     "LISTEN_HOST",
     "LISTEN_PORT",
+    # Connection pool
     "MAX_CONNECTIONS",
     "MAX_KEEPALIVE_CONNECTIONS",
     "KEEPALIVE_EXPIRY",
@@ -142,22 +228,28 @@ __all__ = [
     "READ_TIMEOUT",
     "WRITE_TIMEOUT",
     "POOL_TIMEOUT",
+    # Key health
     "COOLDOWN_BASE_SECONDS",
     "COOLDOWN_MAX_SECONDS",
     "MAX_CONSECUTIVE_ERRORS",
     "SUSPEND_SECONDS",
     "HEALTH_CHECK_INTERVAL",
     "PREWARM_INTERVAL",
+    # Retry
     "MAX_RETRIES",
     "RETRY_STATUSES",
     "STREAM_FIRST_BYTE_TIMEOUT",
+    # Logging
     "LOG_LEVEL",
     "LOG_JSON",
     "LOG_REQUEST_ID",
+    # System prompt
     "SYSTEM_PROMPT_OVERRIDE_ENABLED",
     "SYSTEM_PROMPT_OVERRIDE_FILE",
     "SYSTEM_PROMPT_OVERRIDE",
+    # CORS
     "CORS_ORIGINS",
+    # Logger
     "get_logger",
     "log",
     "set_request_id",

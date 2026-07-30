@@ -1,16 +1,98 @@
-"""Bidirectional OpenAI ↔ Anthropic protocol translation."""
+"""Bidirectional OpenAI ↔ Anthropic protocol translation + streaming."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, TypedDict, Literal
+
+import httpx
+import orjson
 
 from .utils import loads
 from .system_prompt import _inject_system_override_openai, _inject_system_override_anthropic
 from .config import SYSTEM_PROMPT_OVERRIDE, get_logger
 
 log = get_logger(__name__)
+
+
+# =============================================================================
+# TypedDict definitions for type safety and exhaustive matching
+# =============================================================================
+
+class OpenAIChatMessage(TypedDict, total=False):
+    role: Literal["system", "user", "assistant", "tool", "developer"]
+    content: str | List[Any] | None
+    tool_calls: List[Dict]
+    tool_call_id: str
+    name: str
+
+
+class AnthropicMessage(TypedDict, total=False):
+    role: Literal["user", "assistant"]
+    content: str | List[Dict]
+
+
+class OpenAITool(TypedDict):
+    type: Literal["function"]
+    function: Dict[str, Any]
+
+
+class AnthropicTool(TypedDict, total=False):
+    name: str
+    input_schema: Dict[str, Any]
+    description: str
+
+
+class OpenAIToolChoice(TypedDict, total=False):
+    type: Literal["auto", "required", "none", "function"]
+    function: Dict[str, str]
+
+
+class AnthropicToolChoice(TypedDict, total=False):
+    type: Literal["auto", "any", "none", "tool"]
+    name: str
+
+
+class OpenAIReasoning(TypedDict, total=False):
+    effort: Literal["low", "medium", "high", "none"]
+    max_tokens: int
+
+
+class AnthropicThinking(TypedDict, total=False):
+    type: Literal["enabled", "adaptive", "disabled"]
+    budget_tokens: int
+
+
+# Streaming event types
+class OpenAIStreamDelta(TypedDict, total=False):
+    role: str
+    content: str
+    tool_calls: List[Dict]
+
+
+class OpenAIStreamChoice(TypedDict, total=False):
+    index: int
+    delta: OpenAIStreamDelta
+    finish_reason: Optional[str]
+
+
+class OpenAIStreamChunk(TypedDict, total=False):
+    id: str
+    object: str
+    created: int
+    model: str
+    choices: List[OpenAIStreamChoice]
+
+
+class AnthropicStreamEvent(TypedDict, total=False):
+    type: Literal["message_start", "message_delta", "message_stop", "content_block_start", "content_block_delta", "content_block_stop"]
+    message: Dict
+    delta: Dict
+    index: int
+    content_block: Dict
 
 
 def _stringify_args(args: Any) -> str:
@@ -743,3 +825,242 @@ def prepare_messages_body(body: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return body
+
+
+# =============================================================================
+# Streaming Translation (SSE frames both ways)
+# =============================================================================
+
+async def translate_stream_openai_to_anthropic(
+    upstream_response: httpx.Response,
+) -> AsyncIterator[bytes]:
+    """
+    Convert OpenAI SSE stream → Anthropic SSE stream.
+
+    OpenAI: data: {"choices":[{"delta":{"content":"hi"},"finish_reason":null}]}
+    Anthropic: event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}
+    """
+    import httpx
+    import orjson
+
+    content_block_index = 0
+    message_started = False
+
+    try:
+        async for raw in upstream_response.aiter_raw():
+            if not raw:
+                continue
+
+            for frame in raw.split(b"\n\n"):
+                frame = frame.strip()
+                if not frame or frame == b"data: [DONE]":
+                    continue
+
+                if frame.startswith(b"data: "):
+                    try:
+                        data = orjson.loads(frame[6:])
+                        choices = data.get("choices", [])
+                        if not choices:
+                            continue
+
+                        delta = choices[0].get("delta", {})
+                        finish_reason = choices[0].get("finish_reason")
+
+                        if not message_started:
+                            # Send message_start
+                            yield b"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"stream\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n"
+                            message_started = True
+
+                            # Send content_block_start
+                            yield b"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"
+
+                        # Handle content delta
+                        if "content" in delta and delta["content"]:
+                            yield orjson.dumps({
+                                "type": "content_block_delta",
+                                "index": content_block_index,
+                                "delta": {"type": "text_delta", "text": delta["content"]}
+                            }).decode().encode() + b"\n\n"
+
+                        # Handle tool calls
+                        if "tool_calls" in delta and delta["tool_calls"]:
+                            for tc in delta["tool_calls"]:
+                                fn = tc.get("function", {})
+                                yield orjson.dumps({
+                                    "type": "content_block_start",
+                                    "index": content_block_index,
+                                    "content_block": {
+                                        "type": "tool_use",
+                                        "id": tc.get("id", f"call_{uuid.uuid4().hex[:12]}"),
+                                        "name": fn.get("name", ""),
+                                        "input": fn.get("arguments", "{}")
+                                    }
+                                }).decode().encode() + b"\n\n"
+                                content_block_index += 1
+
+                        # Handle finish
+                        if finish_reason:
+                            stop_reason = "end_turn"
+                            if finish_reason == "tool_calls":
+                                stop_reason = "tool_use"
+                            elif finish_reason == "length":
+                                stop_reason = "max_tokens"
+
+                            yield b"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                            yield orjson.dumps({
+                                "type": "message_delta",
+                                "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+                                "usage": {"output_tokens": 0}
+                            }).decode().encode() + b"\n\n"
+                            yield b"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                            return
+
+                    except orjson.JSONDecodeError:
+                        continue
+
+    except (httpx.ReadError, httpx.StreamError, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        log.warning(f"Stream translation error: {e}")
+
+
+async def translate_stream_anthropic_to_openai(
+    upstream_response: httpx.Response,
+) -> AsyncIterator[bytes]:
+    """
+    Convert Anthropic SSE stream → OpenAI SSE stream.
+
+    Anthropic: event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}
+    OpenAI: data: {"choices":[{"delta":{"content":"hi"},"finish_reason":null}]}
+    """
+    import httpx
+    import orjson
+
+    try:
+        async for raw in upstream_response.aiter_raw():
+            if not raw:
+                continue
+
+            for frame in raw.split(b"\n\n"):
+                frame = frame.strip()
+                if not frame:
+                    continue
+
+                # Parse SSE frame
+                event_type = None
+                data = None
+
+                for line in frame.split(b"\n"):
+                    line = line.strip()
+                    if line.startswith(b"event: "):
+                        event_type = line[7:].decode()
+                    elif line.startswith(b"data: "):
+                        try:
+                            data = orjson.loads(line[6:])
+                        except orjson.JSONDecodeError:
+                            continue
+
+                if not data:
+                    continue
+
+                # Translate Anthropic events to OpenAI format
+                if event_type == "message_start":
+                    # Could send role delta here
+                    yield b"data: " + orjson.dumps({
+                        "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": "stream",
+                        "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]
+                    }) + b"\n\n"
+
+                elif event_type == "content_block_start":
+                    block = data.get("content_block", {})
+                    if block.get("type") == "tool_use":
+                        yield b"data: " + orjson.dumps({
+                            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": "stream",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {
+                                    "tool_calls": [{
+                                        "id": block.get("id", f"call_{uuid.uuid4().hex[:12]}"),
+                                        "type": "function",
+                                        "function": {
+                                            "name": block.get("name", ""),
+                                            "arguments": ""
+                                        }
+                                    }]
+                                },
+                                "finish_reason": None
+                            }]
+                        }) + b"\n\n"
+
+                elif event_type == "content_block_delta":
+                    delta = data.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        text = delta.get("text", "")
+                        if text:
+                            yield b"data: " + orjson.dumps({
+                                "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": "stream",
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": text},
+                                    "finish_reason": None
+                                }]
+                            }) + b"\n\n"
+                    elif delta.get("type") == "input_json_delta":
+                        # Tool call arguments streaming
+                        partial = delta.get("partial_json", "")
+                        if partial:
+                            yield b"data: " + orjson.dumps({
+                                "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": "stream",
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {
+                                        "tool_calls": [{
+                                            "index": 0,
+                                            "function": {"arguments": partial}
+                                        }]
+                                    },
+                                    "finish_reason": None
+                                }]
+                            }) + b"\n\n"
+
+                elif event_type == "message_delta":
+                    delta = data.get("delta", {})
+                    if delta.get("stop_reason"):
+                        stop_reason = delta["stop_reason"]
+                        finish_reason = "stop"
+                        if stop_reason == "tool_use":
+                            finish_reason = "tool_calls"
+                        elif stop_reason == "max_tokens":
+                            finish_reason = "length"
+                        yield b"data: " + orjson.dumps({
+                            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": "stream",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": finish_reason
+                            }]
+                        }) + b"\n\n"
+
+                elif event_type == "message_stop":
+                    yield b"data: [DONE]\n\n"
+                    return
+
+    except (httpx.ReadError, httpx.StreamError, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        log.warning(f"Stream translation error: {e}")

@@ -13,9 +13,12 @@ from .config import (
     LISTEN_PORT,
     OPENROUTER_CHAT,
     OPENROUTER_MESSAGES,
-    OPENROUTER_MODEL,
     OPENROUTER_MODELS,
+    get_chat_endpoint,
+    get_default_model,
     get_logger,
+    get_messages_endpoint,
+    get_models_endpoint,
 )
 from .proxy import ProxyCore
 from .translation import (
@@ -36,10 +39,12 @@ proxy: Optional[ProxyCore] = None
 @router.get("/")
 async def root() -> Dict[str, Any]:
     assert proxy is not None
+    from .config import get_provider, get_default_model
     return {
-        "service": "OpenRouter Translation Proxy",
-        "version": "1.1.0",
-        "default_model": OPENROUTER_MODEL,
+        "service": "Atlas Translation Proxy",
+        "version": "1.2.0",
+        "provider": get_provider(),
+        "default_model": get_default_model(),
         "force_default_model": FORCE_DEFAULT_MODEL,
         "endpoints": [
             "POST /v1/chat/completions",
@@ -91,7 +96,7 @@ async def stats() -> Dict[str, Any]:
 async def models(request: Request) -> Response:
     assert proxy is not None
     rid = request_id(request)
-    return await proxy.forward("GET", OPENROUTER_MODELS, request_id=rid)
+    return await proxy.forward("GET", get_models_endpoint(), request_id=rid)
 
 
 @router.post("/v1/chat/completions")
@@ -137,7 +142,7 @@ async def chat_completions(request: Request) -> Response:
     )
     return await proxy.forward(
         "POST",
-        OPENROUTER_CHAT,
+        get_chat_endpoint(),
         body=payload,
         stream=stream,
         request_id=rid,
@@ -195,7 +200,7 @@ async def messages(request: Request) -> Response:
     )
     return await proxy.forward(
         "POST",
-        OPENROUTER_MESSAGES,
+        get_messages_endpoint(),
         body=payload,
         extra_headers=extra,
         stream=stream,
@@ -250,7 +255,7 @@ async def responses(request: Request) -> Response:
     )
     return await proxy.forward(
         "POST",
-        OPENROUTER_MESSAGES,
+        get_messages_endpoint(),
         body=payload,
         stream=stream,
         request_id=rid,

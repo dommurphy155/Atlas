@@ -57,8 +57,8 @@ ${C_BOLD}Commands:${C_RESET}
   keys      Show detailed per-key statistics from /health/keys
 
 ${C_BOLD}Options (for start/restart):${C_RESET}
-  --nvidia       Use NVIDIA provider (default)
-  --openrouter   Use OpenRouter provider
+  --nvidia       Use NVIDIA provider
+  --openrouter   Use OpenRouter provider (default)
 
 ${C_BOLD}Environment:${C_RESET}
   ATLAS_PROXY_URL   Proxy base URL (default: http://127.0.0.1:8788)

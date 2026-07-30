@@ -15,14 +15,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import routes
 from .config import (
     CORS_ORIGINS,
-    FALLBACK_KEY_FILE,
     FORCE_DEFAULT_MODEL,
     KEEPALIVE_EXPIRY,
-    KEY_FILE,
     LISTEN_HOST,
     LISTEN_PORT,
     LOG_LEVEL,
-    OPENROUTER_MODEL,
+    get_default_model,
+    get_fallback_keys_file,
+    get_keys_file,
+    get_provider,
     log,
 )
 from .keypool import KeyPool, load_keys
@@ -39,35 +40,37 @@ except ImportError:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    keys = load_keys(KEY_FILE)
+    provider = get_provider()
+    keys = load_keys(get_keys_file())
     if not keys:
-        keys = load_keys(FALLBACK_KEY_FILE)
+        keys = load_keys(get_fallback_keys_file())
         if keys:
             log.warning(
                 "Primary keys file missing – using fallback %s (%d keys)",
-                FALLBACK_KEY_FILE,
+                get_fallback_keys_file(),
                 len(keys),
             )
     if not keys:
         log.error(
-            "No keys found. Expected file: %s (one sk-or-… key per line)",
-            KEY_FILE,
+            "No keys found. Expected file: %s (one key per line)",
+            get_keys_file(),
         )
         sys.exit(1)
 
-    log.info("Loaded %d OpenRouter keys", len(keys))
+    log.info("Loaded %d %s keys", len(keys), provider)
     pool = KeyPool(keys)
     core = ProxyCore(pool)
     await core.start()
     routes.proxy = core
     log.info(
         "Proxy listening on http://%s:%d  (keys=%d, healthy=%d, "
-        "default_model=%s, force=%s)",
+        "provider=%s, default_model=%s, force=%s)",
         LISTEN_HOST,
         LISTEN_PORT,
         pool.stats()["total"],
         pool.stats()["healthy"],
-        OPENROUTER_MODEL,
+        provider,
+        get_default_model(),
         FORCE_DEFAULT_MODEL,
     )
     yield
@@ -77,7 +80,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="OpenRouter Translation Proxy",
+    title="Atlas Translation Proxy",
     version="1.1.0",
     lifespan=lifespan,
 )
