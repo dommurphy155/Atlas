@@ -1,6 +1,7 @@
 """System service installation (systemd, launchd, Windows Service)."""
 
 import os
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -30,6 +31,32 @@ class ServiceConfig:
     def __post_init__(self):
         if self.env is None:
             self.env = {}
+
+
+def _sanitize_systemd_value(value: str) -> str:
+    """Sanitize value for systemd Environment= line (no newlines, no trailing comments)."""
+    return value.replace("\n", " ").replace("\r", " ").strip()
+
+
+def _sanitize_service_name(name: str) -> str:
+    """Validate service name (alphanumeric, dash, underscore only)."""
+    import re
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        raise ValueError(f"Invalid service name: {name!r} — only alphanumeric, dash, underscore allowed")
+    return name
+
+
+def _validate_absolute_path(path: str, field: str) -> str:
+    """Validate path is absolute and safe."""
+    p = Path(path)
+    if not p.is_absolute():
+        raise ValueError(f"{field} must be absolute path: {path!r}")
+    # Prevent directory traversal
+    try:
+        p.resolve()
+    except Exception as e:
+        raise ValueError(f"Invalid {field}: {e}")
+    return str(p)
 
 
 SYSTEMD_TEMPLATE = """# Atlas Proxy — systemd unit
@@ -96,6 +123,7 @@ WINDOWS_SERVICE_TEMPLATE = '''"""Atlas Proxy Windows Service host."""
 
 import sys
 import os
+import json
 import servicemanager
 import win32serviceutil
 import win32service
@@ -129,7 +157,7 @@ class AtlasProxyService(win32serviceutil.ServiceFramework):
     def main(self):
         env = os.environ.copy()
         {env_setup}
-        env.update({env_dict})
+        env.update(json.loads(r"""{env_dict_json}"""))
         self.process = subprocess.Popen(
             [{python_path!r}, "-m", "{module}"],
             cwd={working_dir!r},
@@ -154,26 +182,42 @@ def install_systemd_service(config: ServiceConfig, platform_info: PlatformInfo) 
         console.error("systemctl not found")
         return False
 
+    # Validate and sanitize all inputs
+    name = _sanitize_service_name(config.name)
+    description = config.description.strip()
+    user = config.user or os.getenv("SUDO_USER") or os.getenv("USER") or "root"
+    working_dir = _validate_absolute_path(config.working_dir, "working_dir")
+    python_path = _validate_absolute_path(config.python_path, "python_path")
+    module = config.module
+    if not module.replace(".", "").replace("_", "").isalnum():
+        raise ValueError(f"Invalid module name: {module!r}")
+    venv_bin = str(Path(python_path).parent)
+    home = str(Path.home())
+
+    # Sanitize env vars for systemd
+    env_vars = "\n".join(
+        f"Environment={k}={_sanitize_systemd_value(v)}"
+        for k, v in config.env.items()
+    )
+
     # Render template
-    env_vars = "\n".join(f"Environment={k}={v}" for k, v in config.env.items())
     unit = SYSTEMD_TEMPLATE.format(
-        description=config.description,
-        user=config.user or os.getenv("SUDO_USER") or os.getenv("USER") or "root",
-        working_dir=config.working_dir,
-        home=str(Path.home()),
-        venv_bin=str(Path(config.python_path).parent),
-        python_path=config.python_path,
-        module=config.module,
+        description=description,
+        user=user,
+        working_dir=working_dir,
+        home=home,
+        venv_bin=venv_bin,
+        python_path=python_path,
+        module=module,
         env_vars=env_vars,
     )
 
     # Write unit file
-    unit_path = Path("/etc/systemd/system") / f"{config.name}.service"
+    unit_path = Path("/etc/systemd/system") / f"{name}.service"
     try:
         if os.geteuid() == 0:
             write_file(unit_path, unit)
         else:
-            # Use sudo tee
             subprocess.run(
                 ["sudo", "tee", str(unit_path)],
                 input=unit.encode(),
@@ -187,8 +231,8 @@ def install_systemd_service(config: ServiceConfig, platform_info: PlatformInfo) 
     # Reload and enable
     try:
         subprocess.run(["systemctl", "daemon-reload"], check=True)
-        subprocess.run(["systemctl", "enable", "--now", config.name], check=True)
-        console.success(f"Installed and started systemd service: {config.name}")
+        subprocess.run(["systemctl", "enable", "--now", name], check=True)
+        console.success(f"Installed and started systemd service: {name}")
         return True
     except subprocess.CalledProcessError as e:
         console.error(f"Failed to enable/start service: {e}")
@@ -200,14 +244,24 @@ def install_launchd_service(config: ServiceConfig, platform_info: PlatformInfo) 
     if not platform_info.is_macos:
         return False
 
-    label = config.name.replace("-", ".")
+    # Validate and sanitize all inputs
+    name = _sanitize_service_name(config.name)
+    label = name.replace("-", ".")
+    python_path = _validate_absolute_path(config.python_path, "python_path")
+    module = config.module
+    if not module.replace(".", "").replace("_", "").isalnum():
+        raise ValueError(f"Invalid module name: {module!r}")
+    working_dir = _validate_absolute_path(config.working_dir, "working_dir")
+    venv_bin = str(Path(python_path).parent)
+    home = str(Path.home())
+
     plist = LAUNCHD_TEMPLATE.format(
         label=label,
-        python_path=config.python_path,
-        module=config.module,
-        working_dir=config.working_dir,
-        home=str(Path.home()),
-        venv_bin=str(Path(config.python_path).parent),
+        python_path=python_path,
+        module=module,
+        working_dir=working_dir,
+        home=home,
+        venv_bin=venv_bin,
     )
 
     plist_dir = Path.home() / "Library" / "LaunchAgents"
@@ -246,7 +300,8 @@ def install_windows_service(config: ServiceConfig, platform_info: PlatformInfo) 
     service_module = service_dir / "atlas_windows_service.py"
 
     env_setup = "        env[\"HOME\"] = os.path.expanduser(\"~\")\n"
-    env_dict = ", ".join(f'"{k}": "{v}"' for k, v in config.env.items())
+    # JSON encode the env dict for safe embedding
+    env_dict_json = json.dumps(config.env)
 
     service_code = WINDOWS_SERVICE_TEMPLATE.format(
         name=config.name,
@@ -256,7 +311,7 @@ def install_windows_service(config: ServiceConfig, platform_info: PlatformInfo) 
         module=config.module,
         working_dir=config.working_dir,
         env_setup=env_setup,
-        env_dict=env_dict,
+        env_dict_json=env_dict_json,
     )
 
     write_file(service_module, service_code)
@@ -314,9 +369,12 @@ def uninstall_service(name: str, platform_info: PlatformInfo) -> bool:
 
     elif platform_info.is_windows:
         try:
-            service_module = Path(config.working_dir) / "setup" / "atlas_windows_service.py"
+            # Get working_dir from the current process or use a default
+            working_dir = str(Path.cwd())
+            service_module = Path(working_dir) / "setup" / "atlas_windows_service.py"
             if service_module.exists():
-                subprocess.run([config.python_path, str(service_module), "--remove"], check=False)
+                python_path = str(Path(sys.executable))
+                subprocess.run([python_path, str(service_module), "--remove"], check=False)
             console.success(f"Removed Windows Service: {name}")
             return True
         except Exception as e:

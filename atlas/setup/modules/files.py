@@ -116,11 +116,13 @@ def run_shell(
     env: Optional[dict] = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Run shell script (bash on Unix, cmd on Windows)."""
+    """Run shell script (bash on Unix, cmd on Windows) — DEPRECATED: use run_command with explicit args."""
+    import warnings
+    warnings.warn("run_shell is deprecated — use run_command with explicit argv list", DeprecationWarning, stacklevel=2)
     platform = detect_platform()
     if platform.is_windows:
-        return run_command(["cmd", "/c", script], cwd=cwd, env=env, check=check, shell=True)
-    return run_command(["bash", "-c", script], cwd=cwd, env=env, check=check)
+        return run_command(["cmd", "/c", script], cwd=cwd, env=env, check=check, shell=False)
+    return run_command(["bash", "-c", script], cwd=cwd, env=env, check=check, shell=False)
 
 
 def symlink(target: Path, link: Path, sudo: bool = False) -> bool:

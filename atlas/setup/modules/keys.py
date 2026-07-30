@@ -141,9 +141,22 @@ def resolve_keys_file(
     env_override: Optional[str] = None,
 ) -> Path:
     """Resolve keys file path with fallback."""
-    # 1. Explicit env override
+    # 1. Explicit env override — validate it's within project_dir or allowed locations
     if env_override:
-        return Path(env_override)
+        override_path = Path(env_override).resolve()
+        project_resolved = project_dir.resolve()
+        # Allow override only if within project or /etc/atlas-proxy or /var/lib/atlas-proxy
+        allowed_parents = [
+            project_resolved,
+            Path("/etc/atlas-proxy"),
+            Path("/var/lib/atlas-proxy"),
+        ]
+        if not any(override_path.is_relative_to(p) for p in allowed_parents):
+            raise ValueError(
+                f"Keys file override must be within project directory, /etc/atlas-proxy, or /var/lib/atlas-proxy. "
+                f"Got: {env_override!r}"
+            )
+        return override_path
 
     # 2. Provider-specific default
     if provider == "openrouter":

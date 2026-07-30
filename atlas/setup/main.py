@@ -178,6 +178,12 @@ def setup_service(ctx: SetupContext, config: EnvConfig) -> bool:
 
     console.step("Installing system service")
 
+    # Use dedicated service user on Linux for least privilege
+    if ctx.platform.is_linux:
+        service_user = _ensure_service_user()
+    else:
+        service_user = os.getenv("SUDO_USER") or os.getenv("USER") or "root"
+
     svc_config = ServiceConfig(
         name="atlas-proxy",
         display_name="Atlas Proxy",
@@ -185,7 +191,7 @@ def setup_service(ctx: SetupContext, config: EnvConfig) -> bool:
         working_dir=str(ctx.platform.project_dir),
         python_path=str(ctx.platform.venv_bin / ("python.exe" if ctx.platform.is_windows else "python")),
         module="proxy.main",
-        user=os.getenv("SUDO_USER") or os.getenv("USER") or "root",
+        user=service_user,
         env=config.to_env_dict(),
     )
 
@@ -194,6 +200,31 @@ def setup_service(ctx: SetupContext, config: EnvConfig) -> bool:
         return True
 
     return install_service(svc_config, ctx.platform)
+
+
+def _ensure_service_user() -> str:
+    """Ensure dedicated atlas-proxy system user exists (Linux only)."""
+    import subprocess
+    username = "atlas-proxy"
+    try:
+        # Check if user exists
+        subprocess.run(["id", username], check=True, capture_output=True)
+        return username
+    except subprocess.CalledProcessError:
+        # Create system user
+        try:
+            subprocess.run([
+                "useradd", "--system", "--no-create-home",
+                "--shell", "/usr/sbin/nologin",
+                "--comment", "Atlas Proxy Service",
+                username
+            ], check=True)
+            console.success(f"Created system user: {username}")
+            return username
+        except subprocess.CalledProcessError as e:
+            console.warning(f"Could not create system user (need root): {e}")
+            # Fall back to current user
+            return os.getenv("SUDO_USER") or os.getenv("USER") or "root"
 
 
 def setup_cli(ctx: SetupContext) -> bool:
