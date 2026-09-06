@@ -161,12 +161,31 @@ def _load_runtime_provider() -> str:
 
     Returns ``openrouter`` or ``huggingface``.
     Falls back to ``ATLAS_PROVIDER`` env var, then ``openrouter``.
+
+    The runtime provider file controls which upstream's keys are loaded and
+    which API surface is exposed, so it is a security-sensitive control. We
+    refuse to load it if it is world-writable (any local user can switch
+    the proxy's upstream by editing one JSON line).
     """
     try:
         import json as _json
+        import os as _os
+        import stat as _stat
         from pathlib import Path as _Path
         p = _Path(RUNTIME_PROVIDER_FILE)
         if p.is_file():
+            # Check ownership: refuse to load if world-writable.
+            try:
+                st = p.stat()
+                if st.st_mode & _stat.S_IWOTH:
+                    log.warning(
+                        "Refusing to load %s: file is world-writable (uid=%d mode=%04o). "
+                        "Fix with: chmod 644 %s",
+                        RUNTIME_PROVIDER_FILE, st.st_uid, st.st_mode & 0o777, RUNTIME_PROVIDER_FILE,
+                    )
+                    return _env("ATLAS_PROVIDER", "openrouter")
+            except OSError:
+                pass  # stat failure handled below
             data = _json.loads(p.read_text(encoding="utf-8"))
             provider = data.get("provider", "").lower()
             if provider in ("huggingface", "hf", "openrouter", "or"):
@@ -352,8 +371,11 @@ PREWARM_INTERVAL: float = _env_float("PREWARM_INTERVAL", 300.0)
 # Retry / streaming
 # ---------------------------------------------------------------------------
 MAX_RETRIES: int = _env_int("ATLAS_PROXY_MAX_RETRIES", _env_int("MAX_RETRIES", 5))
+# 409 (Conflict) intentionally excluded: it's not safe to auto-retry for
+# most APIs (state conflicts, idempotency-key collisions, etc.) and
+# retrying a non-idempotent op can produce duplicate side effects.
 RETRY_STATUSES: frozenset[int] = frozenset(
-    {408, 409, 423, 425, 429, 499, 500, 502, 503, 504, 507, 524, 529}
+    {408, 423, 425, 429, 499, 500, 502, 503, 504, 507, 524, 529}
 )
 STREAM_FIRST_BYTE_TIMEOUT: float = _env_float("STREAM_FIRST_BYTE_TIMEOUT", 20.0)
 PROXY_KEEPALIVE_SECONDS: float = _env_float("ATLAS_PROXY_KEEPALIVE_SECONDS", 15.0)

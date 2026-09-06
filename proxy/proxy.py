@@ -84,6 +84,39 @@ def _enforce_default_model(body: Optional[bytes]) -> Optional[bytes]:
     return dumps(parsed)
 
 
+# --- atlas-sse-frame-redact-helper v1 ---
+# Cap and redact an SSE error frame for safe logging. The frame is JSON
+# (OpenAI / Anthropic / HF error shapes). We strip values of common
+# sensitive keys ("prompt", "input", "messages", "system", "content",
+# "Authorization", "api_key") and hard-cap the result at MAX_FRAME_LOG_BYTES
+# to prevent log bombs.
+import re as _re
+_REDACT_KEYS = (
+    "prompt", "input", "messages", "system", "content",
+    "Authorization", "api_key", "apiKey", "x-api-key",
+    "hf_token", "OPENAI_API_KEY",
+)
+_REDACT_RE = _re.compile(
+    r'"(?:' + "|".join(_REDACT_KEYS) + r')"\s*:\s*"(?:[^"\\]|\\.)*"',
+    _re.IGNORECASE,
+)
+MAX_FRAME_LOG_BYTES = 80
+
+def _redact_frame_for_log(frame: bytes) -> str:
+    """Return a short, redacted string representation of a frame for logging.
+
+    Hard-cap at MAX_FRAME_LOG_BYTES (80). Strips values of common sensitive
+    keys so an upstream that echoes the user's prompt in an error payload
+    does not leak it into the operator's logs.
+    """
+    try:
+        s = frame.decode("utf-8", errors="replace")
+    except Exception:
+        s = repr(frame)
+    s = _REDACT_RE.sub(lambda m: m.group(0).split(":", 1)[0] + ':"[REDACTED]"', s)
+    return s[:MAX_FRAME_LOG_BYTES]
+
+
 # --- atlas-sse-error-classification-patch v1 ---
 def _classify_sse_frame(frame: bytes) -> Optional[dict]:
     """
@@ -278,7 +311,11 @@ class ProxyCore:
                 "HTTP-Referer": UPSTREAM_REFERER,
                 "X-Title": UPSTREAM_TITLE,
             },
-            follow_redirects=True,
+            # Disabled: a 3xx from a (potentially compromised) upstream could
+            # otherwise redirect the proxy to an attacker-controlled host with
+            # the Bearer token still attached. The upstream providers in use
+            # (OpenRouter, HF) do not issue redirects on the data plane.
+            follow_redirects=False,
         )
         # Pre-warming is strictly background work. Never delay proxy readiness
         # or the first real request waiting for an upstream connection.
@@ -824,7 +861,7 @@ class ProxyCore:
                                 key_idx,
                                 frame_error["kind"],
                                 frame_error.get("raw_type"),
-                                frame[:300],
+                                _redact_frame_for_log(frame),
                             )
                             # Map the *structured* error kind to a status.
                             # Never collapse everything to 429: context-length
@@ -979,7 +1016,12 @@ class ProxyCore:
 
                 # logging-only lifecycle completion
                 _tr = pl.trace(request_id)
-                if not stream_error:
+                if stream_error_reason == "client_cancelled":
+                    # Client cancellation is not an upstream problem; log it
+                    # distinctly so dashboards can separate user-cancels from
+                    # real upstream failures.
+                    _tr.fail(status=499, phase="client_cancelled", error="client cancelled before stream completed")
+                elif not stream_error:
                     _tr.finish(status=200)
                 else:
                     _tr.fail(status=599, phase="upstream", error=f"upstream closed early / mid-stream error ({stream_error_reason})")
@@ -1079,19 +1121,39 @@ class ProxyCore:
                 keepalive_interval = float(PROXY_KEEPALIVE_SECONDS) if PROXY_KEEPALIVE_SECONDS else 15.0
             except NameError:
                 keepalive_interval = 15.0
-
+            # Separate deadline for the *first* upstream byte. If upstream
+            # connects but never sends data within this window, treat it as
+            # a stuck provider and rotate the key (do NOT keepalive forever).
+            try:
+                first_byte_deadline = float(STREAM_FIRST_BYTE_TIMEOUT) if STREAM_FIRST_BYTE_TIMEOUT else 20.0
+            except NameError:
+                first_byte_deadline = 20.0
+            first_byte_received = False
             try:
                 aiter = upstream.aiter_raw()
                 while True:
                     try:
                         raw = await asyncio.wait_for(aiter.__anext__(), timeout=keepalive_interval)
                     except asyncio.TimeoutError:
-                        # No data from upstream → emit client keepalive and keep waiting
+                        if not first_byte_received:
+                            stream_error = True
+                            stream_error_reason = "upstream_first_byte_timeout"
+                            log.warning(
+                                "req=%s key_idx=%d no first byte from upstream in %.1fs; rotating key",
+                                request_id, key_idx, first_byte_deadline,
+                            )
+                            try:
+                                await self.pool.mark_error(key_idx, 504)
+                            except Exception:
+                                pass
+                            return
                         if not stream_error:
                             yield b": keepalive\n\n"
                         continue
                     except StopAsyncIteration:
                         break
+
+                    first_byte_received = True
 
                     if not raw:
                         continue
@@ -1121,7 +1183,7 @@ class ProxyCore:
                                 key_idx,
                                 frame_error["kind"],
                                 frame_error.get("raw_type"),
-                                frame[:300],
+                                _redact_frame_for_log(frame),
                             )
                             # Map the structured error kind to a status
                             err_status = _KIND_TO_STATUS.get(frame_error["kind"], 502)
@@ -1192,7 +1254,12 @@ class ProxyCore:
 
                 # logging-only lifecycle completion
                 _tr = pl.trace(request_id)
-                if not stream_error:
+                if stream_error_reason == "client_cancelled":
+                    # Client cancellation is not an upstream problem; log it
+                    # distinctly so dashboards can separate user-cancels from
+                    # real upstream failures.
+                    _tr.fail(status=499, phase="client_cancelled", error="client cancelled before stream completed")
+                elif not stream_error:
                     _tr.finish(status=200)
                 else:
                     _tr.fail(status=599, phase="upstream", error=f"upstream closed early / mid-stream error ({stream_error_reason})")
