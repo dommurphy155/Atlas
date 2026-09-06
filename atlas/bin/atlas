@@ -219,26 +219,30 @@ def http_health(url: str) -> tuple[bool, str]:
 # Subcommands
 # ---------------------------------------------------------------------------
 def cmd_install(args) -> int:
-    section("Atlas proxy — install")
-    CONSOLE.print(f"  Repo: {cyan(str(REPO_ROOT))}")
-    script = REPO_ROOT / "setup" / "install.sh"
-    if not script.exists():
-        CONSOLE.print(red(f"ERR: installer not found at {script}"))
-        return 1
-    if has_systemctl() and os.geteuid() == 0:
-        rc = subprocess.call(["bash", str(script)])
-    else:
-        rc = subprocess.call(["bash", str(script), "--user"])
-    return rc
+    """Atlas proxy + coding-harness setup wizard.
+
+    Replaces the old "thin wrapper around install.sh" flow. Now drives:
+      harness detection/install → provider selection → key import →
+      harness configuration (with backups) → smoke test → launch.
+    """
+    import importlib
+    sys.path.insert(0, str(REPO_ROOT / "atlas"))
+    wizard = importlib.import_module("bin.setup_wizard")
+    return wizard.run_wizard(dry_run=getattr(args, "dry_run", False))
 
 
 def cmd_uninstall(args) -> int:
-    section("Atlas proxy — uninstall")
+    dry_run = getattr(args, "dry_run", False)
+    title = "Atlas proxy — uninstall (DRY-RUN)" if dry_run else "Atlas proxy — uninstall"
+    section(title)
+    if dry_run:
+        CONSOLE.print(yellow("  DRY-RUN — no changes will be made"))
     script = REPO_ROOT / "setup" / "install.sh"
     if not script.exists():
         CONSOLE.print(red(f"ERR: installer not found at {script}"))
         return 1
-    return subprocess.call(["bash", str(script), "--uninstall"])
+    flags = ["--dry-run"] if dry_run else ["--uninstall"]
+    return subprocess.call(["bash", str(script), *flags])
 
 
 def cmd_start(args) -> int:
@@ -436,24 +440,139 @@ def cmd_version(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Key import — append+dedupe into the configured key file (NEVER overwrite)
+# ---------------------------------------------------------------------------
+def _resolve_key_file() -> Path:
+    """Resolve the live key file from proxy.config.
+
+    Never hardcode a path — KEY_FILE may be overridden by .env (KEY_FILE env
+    var) or ATLAS_HF_KEYS_FILE for HF. We honour whatever the proxy itself
+    reads at runtime so imports land in the same place.
+    """
+    sys.path.insert(0, str(REPO_ROOT))
+    try:
+        from proxy.config import KEY_FILE  # noqa: WPS433
+        return Path(KEY_FILE)
+    except Exception as e:
+        CONSOLE.print(red(f"ERR: could not import proxy.config: {e}"))
+        raise SystemExit(1)
+
+
+def _read_existing_keys(path: Path) -> tuple[set[str], list[str]]:
+    """Read existing keys, preserving comments + blank lines.
+
+    Returns (set_of_keys, list_of_lines) — the line list is the raw text so
+    we can append without rewriting comments or destroying formatting.
+    """
+    if not path.exists():
+        return set(), []
+    raw = path.read_text().splitlines()
+    existing = set()
+    for ln in raw:
+        s = ln.strip()
+        if s and not s.startswith("#"):
+            existing.add(s)
+    return existing, raw
+
+
+def _summarise_import(existing: set[str], candidates: list[str], added: list[str]) -> None:
+    dupes = len(candidates) - len(added)
+    CONSOLE.print(f"  {cyan('Existing')}:    {len(existing) - len(added)}")
+    CONSOLE.print(f"  {cyan('Imported')}:    {len(candidates)}")
+    if dupes:
+        CONSOLE.print(f"  {cyan('Duplicates')}:  {dupes}")
+    CONSOLE.print(f"  {cyan('Added')}:       {len(added)}")
+    CONSOLE.print(f"  {cyan('Total')}:       {len(existing) + len(added)}")
+
+
+def _do_import_keys(candidates_raw: list[str], dry_run: bool, label: str) -> int:
+    """Shared body for import-key / import-key-file.
+
+    candidates_raw: list of strings as supplied (one key may be a multi-key line)
+    label:           short human label for the source (e.g. 'CLI arg' or path)
+    """
+    # Strip whitespace + blank lines, preserve order
+    candidates: list[str] = []
+    seen_in_batch: set[str] = set()
+    for raw in candidates_raw:
+        for piece in raw.replace(",", "\n").splitlines():
+            s = piece.strip()
+            if s and not s.startswith("#") and s not in seen_in_batch:
+                seen_in_batch.add(s)
+                candidates.append(s)
+
+    if not candidates:
+        CONSOLE.print(yellow(f"  No keys found in {label}"))
+        return 1
+
+    key_file = _resolve_key_file()
+    existing, raw_lines = _read_existing_keys(key_file)
+
+    # Dedupe against existing file
+    new_keys = [k for k in candidates if k not in existing]
+
+    section(f"Atlas proxy — import keys{' (DRY-RUN)' if dry_run else ''}")
+    CONSOLE.print(f"  Source: {cyan(label)}")
+    CONSOLE.print(f"  Target: {cyan(str(key_file))}")
+    if dry_run:
+        CONSOLE.print(yellow("  DRY-RUN — no changes will be written"))
+
+    _summarise_import(existing, candidates, new_keys)
+
+    if not new_keys:
+        CONSOLE.print(green("  ✓ nothing to add — all keys already present"))
+        return 0
+
+    if dry_run:
+        CONSOLE.print(dim(f"  would append {len(new_keys)} key(s)"))
+        return 0
+
+    # Ensure trailing newline exists, then append. Preserve comments/blank lines
+    # in the existing file; never rewrite it.
+    suffix = "" if (raw_lines and raw_lines[-1] == "") else "\n"
+    with key_file.open("a", encoding="utf-8") as fh:
+        fh.write(suffix + "\n".join(new_keys) + "\n")
+    CONSOLE.print(green(f"  ✓ appended {len(new_keys)} key(s) to {key_file.name}"))
+    return 0
+
+
+def cmd_import_key(args) -> int:
+    """Import a single key from the CLI (one or more, comma/newline separated)."""
+    keys = [args.key]
+    return _do_import_keys(keys, args.dry_run, label="<cli>")
+
+
+def cmd_import_key_file(args) -> int:
+    """Import keys from a file (one key per line; # comments + blank lines OK)."""
+    path = Path(args.path).expanduser()
+    if not path.exists():
+        CONSOLE.print(red(f"ERR: file not found: {path}"))
+        return 1
+    raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return _do_import_keys(raw, args.dry_run, label=str(path))
+
+
+# ---------------------------------------------------------------------------
 # Argparse — fuzzy-matched subcommands
 # ---------------------------------------------------------------------------
 SUBCOMMANDS = {
-    "install":   cmd_install,
-    "uninstall": cmd_uninstall,
-    "start":     cmd_start,
-    "stop":      cmd_stop,
-    "restart":   cmd_restart,
-    "status":    cmd_status,
-    "st":        cmd_status,
-    "logs":      cmd_logs,
-    "log":       cmd_logs,
-    "doctor":    cmd_doctor,
-    "check":     cmd_check,
-    "config":    cmd_config,
-    "version":   cmd_version,
-    "--version": cmd_version,
-    "-v":        cmd_version,
+    "install":         cmd_install,
+    "uninstall":       cmd_uninstall,
+    "start":           cmd_start,
+    "stop":            cmd_stop,
+    "restart":         cmd_restart,
+    "status":          cmd_status,
+    "st":              cmd_status,
+    "logs":            cmd_logs,
+    "log":             cmd_logs,
+    "doctor":          cmd_doctor,
+    "check":           cmd_check,
+    "config":          cmd_config,
+    "version":         cmd_version,
+    "import-key":      cmd_import_key,
+    "import-key-file": cmd_import_key_file,
+    "--version":       cmd_version,
+    "-v":              cmd_version,
 }
 
 
@@ -468,8 +587,10 @@ HELP_TEXT = f"""
 [dim]Repo-location agnostic — finds the proxy package from this script's path.[/dim]
 
 [bold]Lifecycle[/bold]
-  [cyan]atlas[/cyan] install              First-time setup (venv + systemd)
+  [cyan]atlas[/cyan] install              Atlas proxy + coding-harness setup wizard
+  [cyan]atlas[/cyan] install --dry-run    Preview the wizard without changes
   [cyan]atlas[/cyan] uninstall            Remove systemd unit + cleanup
+  [cyan]atlas[/cyan] uninstall --dry-run  Preview removal without changes
   [cyan]atlas[/cyan] start                Start the proxy
   [cyan]atlas[/cyan] stop                 Stop the proxy
   [cyan]atlas[/cyan] restart              Restart (keeps current provider)
@@ -484,6 +605,12 @@ HELP_TEXT = f"""
   [cyan]atlas[/cyan] doctor               Diagnose common problems
   [cyan]atlas[/cyan] check                Thin wrapper around setup/install.sh --check
 
+[bold]Keys[/bold]
+  [cyan]atlas[/cyan] import-key <KEY>      Append a single key to the key file
+  [cyan]atlas[/cyan] import-key-file <PATH>  Append keys from a file (one per line)
+  [cyan]atlas[/cyan] import-key-file <PATH> --dry-run  Preview without writing
+  [dim]Imports are append+dedupe — the existing key file is never overwritten.[/dim]
+
 [bold]Misc[/bold]
   [cyan]atlas[/cyan] version              Print version + paths
 
@@ -496,7 +623,17 @@ def build_parser() -> argparse.ArgumentParser:
         prog="atlas",
         description="Atlas Translation Proxy CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="",
+        epilog="""\
+examples:
+  atlas start                          Start the proxy (systemd or run.sh)
+  atlas stop                           Stop the proxy
+  atlas restart --huggingface          Restart + switch to HF provider
+  atlas install --dry-run              Preview the install without changes
+  atlas uninstall --dry-run            Preview the removal without changes
+  atlas import-key sk-or-v1-xxx        Append a single key to the key file
+  atlas import-key-file ~/keys.txt     Append keys from a file (one per line)
+  atlas import-key-file ~/keys.txt --dry-run   Preview without writing\
+""",
     )
     sub = p.add_subparsers(dest="command", metavar="<command>")
 
@@ -507,9 +644,30 @@ def build_parser() -> argparse.ArgumentParser:
                             help="Switch to OpenRouter provider")
     sp_restart.add_argument("--model", help="Override default model for next start")
 
-    for name in ("install", "uninstall", "start", "stop", "status", "st",
+    # install / uninstall accept --dry-run
+    sp_install = sub.add_parser("install", help="First-time setup (venv + systemd)")
+    sp_install.add_argument("--dry-run", action="store_true", dest="dry_run",
+                            help="Preview what install would do without making changes")
+
+    sp_uninstall = sub.add_parser("uninstall", help="Remove systemd unit + cleanup")
+    sp_uninstall.add_argument("--dry-run", action="store_true", dest="dry_run",
+                              help="Preview what uninstall would do without making changes")
+
+    # start / stop / status / logs: examples already covered in main epilog
+    for name in ("start", "stop", "status", "st",
                  "logs", "log", "doctor", "check", "config", "version"):
         sub.add_parser(name, help=f"{name} the proxy")
+
+    # import-key / import-key-file
+    sp_ik = sub.add_parser("import-key", help="Append a single API key to the key file")
+    sp_ik.add_argument("key", help="API key string (or comma-separated list)")
+    sp_ik.add_argument("--dry-run", action="store_true", dest="dry_run",
+                       help="Preview what would be added without writing")
+
+    sp_ikf = sub.add_parser("import-key-file", help="Append keys from a file (one per line)")
+    sp_ikf.add_argument("path", help="Path to a text file of keys")
+    sp_ikf.add_argument("--dry-run", action="store_true", dest="dry_run",
+                        help="Preview what would be added without writing")
 
     return p
 
