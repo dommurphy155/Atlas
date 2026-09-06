@@ -99,7 +99,10 @@ VERSION = "1.0.0"
 # ---------------------------------------------------------------------------
 # Styling helpers
 # ---------------------------------------------------------------------------
-def _c(code, text): return f"{code}{text}[/]" if CONSOLE.is_terminal else text
+def _c(code, text):
+    if not CONSOLE.is_terminal:
+        return text
+    return f"[{code}]{text}[/{code}]"
 def green(t):  return f"[green]{t}[/green]"
 def cyan(t):   return f"[cyan]{t}[/cyan]"
 def yellow(t): return f"[yellow]{t}[/yellow]"
