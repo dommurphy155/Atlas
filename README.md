@@ -108,13 +108,13 @@ git clone https://github.com/dommurphy155/Atlas.git
 cd Atlas
 ./setup/install.sh           # systemd unit, venv, CLI symlink
 # or interactively:
-atlas2 install
+atlas install
 ```
 
 The installer:
 1. Creates `.venv/` and installs requirements.
 2. Writes a systemd unit (system or `--user` scope).
-3. Symlinks `atlas2` (or `atlas` — picked at install time) to
+3. Symlinks `atlas` (or `atlas` — picked at install time) to
    `atlas/bin/atlas` in your PATH.
 4. Optionally walks you through harness configuration and smoke tests.
 
@@ -141,8 +141,8 @@ optional; defaults are sensible.
 
 ```bash
 # Interactive, appends + dedupes:
-atlas2 import-key sk-or-v1-...
-atlas2 import-key-file /path/to/keys.txt
+atlas import-key sk-or-v1-...
+atlas import-key-file /path/to/keys.txt
 ```
 
 The CLI resolves the actual key file path via `proxy.config.KEY_FILE` —
@@ -152,15 +152,15 @@ appended.
 ## Running Atlas
 
 ```bash
-atlas2 start                # start the proxy (systemd / run.sh fallback)
-atlas2 status               # show runtime info, mode, service state, /health
-atlas2 logs                 # tail proxy logs
-atlas2 doctor               # diagnose the install
-atlas2 stop                 # stop the proxy
-atlas2 restart              # restart (no provider change)
+atlas start                # start the proxy (systemd / run.sh fallback)
+atlas status               # show runtime info, mode, service state, /health
+atlas logs                 # tail proxy logs
+atlas doctor               # diagnose the install
+atlas stop                 # stop the proxy
+atlas restart              # restart (no provider change)
 ```
 
-The CLI displays as `atlas` everywhere — `atlas2` is the local command
+The CLI displays as `atlas` everywhere — `atlas` is the local command
 name on a box where the upstream `atlas` is also installed. The two
 do not collide.
 
@@ -169,7 +169,7 @@ do not collide.
 The interactive `atlas switch` is the easiest path:
 
 ```bash
-atlas2 switch
+atlas switch
 ```
 
 ```
@@ -210,34 +210,34 @@ in place.
 The script-driven equivalent (no UI) is:
 
 ```bash
-atlas2 restart --openrouter minimax/minimax-m3:free
-atlas2 restart --huggingface deepseek-ai/DeepSeek-V4-Flash:deepinfra
-atlas2 restart --skip                        # just restart, no change
+atlas restart --openrouter minimax/minimax-m3:free
+atlas restart --huggingface deepseek-ai/DeepSeek-V4-Flash:deepinfra
+atlas restart --skip                        # just restart, no change
 ```
 
 ## Examples
 
 ```bash
 # Browse and switch interactively
-atlas2 switch
+atlas switch
 
 # Set model directly
-atlas2 restart --openrouter minimax/minimax-m3:free
+atlas restart --openrouter minimax/minimax-m3:free
 
 # Toggle provider
-atlas2 restart --huggingface deepseek-ai/DeepSeek-V4-Flash:deepinfra
+atlas restart --huggingface deepseek-ai/DeepSeek-V4-Flash:deepinfra
 
 # Just bounce the proxy
-atlas2 restart
+atlas restart
 
 # Add more keys (append-only, dedupe)
-echo "sk-or-v1-..." | atlas2 import-key
-atlas2 import-key-file ~/Downloads/more-keys.txt
+echo "sk-or-v1-..." | atlas import-key
+atlas import-key-file ~/Downloads/more-keys.txt
 
 # Inspect a running install
-atlas2 status
-atlas2 doctor
-atlas2 logs
+atlas status
+atlas doctor
+atlas logs
 ```
 
 ## Runtime configuration
@@ -260,7 +260,7 @@ the known set.
 
 ## Troubleshooting
 
-**`atlas status` shows inactive.** Check `atlas2 logs`. The most common
+**`atlas status` shows inactive.** Check `atlas logs`. The most common
 cause is a missing key file or an upstream 401 on first request.
 
 **Models show up as `$0.01/...` in the picker but I asked for free only.**
@@ -270,11 +270,11 @@ filters out models where one direction is paid (e.g. paid input, free
 output) — by design.
 
 **`No models available for OpenRouter`.** The cached `openrouter_models.json`
-may have hit an upstream error. Run `atlas2 switch` and choose `r` to
+may have hit an upstream error. Run `atlas switch` and choose `r` to
 bust the cache and refetch, or delete `.cache/openrouter_models.json`
 manually.
 
-**Two `atlas` repos on the same box?** `atlas2` is the local command for
+**Two `atlas` repos on the same box?** `atlas` is the local command for
 this fork. `SERVICE_NAME` defaults to `atlas-proxy-fork.service`
 (deliberately distinct from upstream's `atlas-proxy.service`). Override
 with `ATLAS_SERVICE_NAME=atlas-proxy.service` if you really want the
@@ -359,5 +359,5 @@ public remote is a leak, not a cleanup.
 
 See `LICENSE` for the licence terms. Pull requests that touch the
 public CLI surface (`atlas/bin/atlas`) should keep the displayed name
-as `atlas` even when invoked as `atlas2` — that's a hard rule, not a
+as `atlas` even when invoked as `atlas` — that's a hard rule, not a
 convention.
