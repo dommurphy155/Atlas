@@ -1626,10 +1626,59 @@ def openai_response_to_anthropic(data: Dict[str, Any], *, rid: str = "") -> Dict
 
 def openai_sse_to_anthropic_sse(
     sse_chunk: Dict[str, Any],
+    state: Optional[Dict[str, Any]] = None,
 ) -> List[Tuple[str, Optional[Dict]]]:
-    """Convert a single OpenAI SSE payload into Anthropic SSE events."""
+    """Convert a single OpenAI SSE payload into Anthropic SSE events.
+
+    ``state`` (optional) tracks which Anthropic content blocks have already been
+    started so this stateless-looking function can emit well-formed
+    ``content_block_start`` / ``content_block_stop`` pairs for blocks that
+    may not have been pre-allocated. Tracks:
+
+    - ``text_open`` (bool)        : whether the text block is currently open
+    - ``text_index`` (int)        : Anthropic index for the text block
+    - ``thinking_open`` (bool)    : whether the thinking block is currently open
+    - ``thinking_index`` (int)    : Anthropic index for the thinking block
+    - ``next_index`` (int)        : next free Anthropic block index
+    - ``tool_blocks`` (dict idx->started) : per OpenAI tool index, whether the
+                                   Anthropic tool_use block was started
+    """
 
     out: List[Tuple[str, Optional[Dict]]] = []
+
+    if state is None:
+        state = {
+            "text_open": False,
+            "text_index": -1,
+            "thinking_open": False,
+            "thinking_index": -1,
+            "next_index": 0,
+            "tool_blocks": {},
+        }
+
+    def _ensure_thinking() -> int:
+        if not state["thinking_open"]:
+            state["thinking_index"] = state["next_index"]
+            state["next_index"] += 1
+            state["thinking_open"] = True
+            out.append(("content_block_start", {
+                "type": "content_block_start",
+                "index": state["thinking_index"],
+                "content_block": {"type": "thinking", "thinking": ""},
+            }))
+        return state["thinking_index"]
+
+    def _ensure_text() -> int:
+        if not state["text_open"]:
+            state["text_index"] = state["next_index"]
+            state["next_index"] += 1
+            state["text_open"] = True
+            out.append(("content_block_start", {
+                "type": "content_block_start",
+                "index": state["text_index"],
+                "content_block": {"type": "text", "text": ""},
+            }))
+        return state["text_index"]
 
     choices = sse_chunk.get("choices") or []
     if not choices:
@@ -1639,28 +1688,24 @@ def openai_sse_to_anthropic_sse(
     delta = choice.get("delta") or {}
     finish_reason = choice.get("finish_reason")
 
+    # --- reasoning / thinking (must precede text per Anthropic spec) ---
+    reasoning = delta.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning:
+        idx = _ensure_thinking()
+        out.append(("content_block_delta", {
+            "type": "content_block_delta",
+            "index": idx,
+            "delta": {"type": "thinking_delta", "thinking": reasoning},
+        }))
+
     # --- text content ---
     content = delta.get("content")
     if isinstance(content, str) and content:
+        idx = _ensure_text()
         out.append(("content_block_delta", {
             "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "text_delta",
-                "text": content,
-            },
-        }))
-
-    # --- reasoning / thinking ---
-    reasoning = delta.get("reasoning_content")
-    if isinstance(reasoning, str) and reasoning:
-        out.append(("content_block_delta", {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "thinking_delta",
-                "thinking": reasoning,
-            },
+            "index": idx,
+            "delta": {"type": "text_delta", "text": content},
         }))
 
     # --- tool calls ---
@@ -1671,13 +1716,25 @@ def openai_sse_to_anthropic_sse(
             continue
 
         idx = tc.get("index", 0)
-        anthropic_idx = idx + 1
         fn = tc.get("function") or {}
 
-        if fn.get("name"):
+        if idx not in state["tool_blocks"]:
+            anthropic_idx = state["next_index"]
+            state["next_index"] += 1
+            state["tool_blocks"][idx] = {
+                "anthropic_idx": anthropic_idx,
+                "name": "",
+                "started": False,
+            }
+
+        block = state["tool_blocks"][idx]
+
+        if fn.get("name") and not block["started"]:
+            block["started"] = True
+            block["name"] = fn["name"]
             out.append(("content_block_start", {
                 "type": "content_block_start",
-                "index": anthropic_idx,
+                "index": block["anthropic_idx"],
                 "content_block": {
                     "type": "tool_use",
                     "id": tc.get("id") or "",
@@ -1694,21 +1751,36 @@ def openai_sse_to_anthropic_sse(
 
             out.append(("content_block_delta", {
                 "type": "content_block_delta",
-                "index": anthropic_idx,
+                "index": block["anthropic_idx"],
                 "delta": {
                     "type": "input_json_delta",
                     "partial_json": arguments,
                 },
             }))
 
-        if fn.get("name") or arguments:
-            out.append(("content_block_stop", {
-                "type": "content_block_stop",
-                "index": anthropic_idx,
-            }))
-
     # --- finish ---
     if finish_reason:
+        # Close any still-open blocks before the message_stop.
+        if state["thinking_open"]:
+            out.append(("content_block_stop", {
+                "type": "content_block_stop",
+                "index": state["thinking_index"],
+            }))
+            state["thinking_open"] = False
+        if state["text_open"]:
+            out.append(("content_block_stop", {
+                "type": "content_block_stop",
+                "index": state["text_index"],
+            }))
+            state["text_open"] = False
+        for idx, block in state["tool_blocks"].items():
+            if block["started"]:
+                out.append(("content_block_stop", {
+                    "type": "content_block_stop",
+                    "index": block["anthropic_idx"],
+                }))
+                block["started"] = False
+
         out.append(("message_delta", {
             "type": "message_delta",
             "delta": {

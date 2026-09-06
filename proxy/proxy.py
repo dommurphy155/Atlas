@@ -755,7 +755,12 @@ class ProxyCore:
                         frame = buf[:sep]
                         buf = buf[sep + (4 if crlf else 2):]
 
-                        if is_openai_done_frame(frame):
+                        # OpenAI clients REQUIRE `data: [DONE]` as the stream
+                        # terminator; only drop it on the Anthropic re-emit path.
+                        # event_generator knows `is_messages` from the upstream
+                        # URL; iter_upstream_sse's callers (e.g. _stream_openai_to_anthropic)
+                        # filter [DONE] themselves.
+                        if is_messages and is_openai_done_frame(frame):
                             continue
 
                         frame_error = _classify_sse_frame(frame)

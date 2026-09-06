@@ -314,7 +314,9 @@ def get_key_prefix() -> str:
 # Server
 # ---------------------------------------------------------------------------
 LISTEN_HOST: str = _env("LISTEN_HOST", "0.0.0.0")
-LISTEN_PORT: int = _env_int("LISTEN_PORT", 8788)
+# Forked proxy defaults to 8777 — the primary atlas proxy owns 8788.
+# Override with LISTEN_PORT env var if you need a different port.
+LISTEN_PORT: int = _env_int("LISTEN_PORT", 8777)
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +479,7 @@ CORS_ORIGINS: List[str] = [
 # ---------------------------------------------------------------------------
 # Debug / upstream identity
 # ---------------------------------------------------------------------------
-UPSTREAM_REFERER: str = _env("ATLAS_UPSTREAM_REFERER", "https://localhost:8788")
+UPSTREAM_REFERER: str = _env("ATLAS_UPSTREAM_REFERER", "https://localhost:8777")
 UPSTREAM_TITLE: str = _env("ATLAS_UPSTREAM_TITLE", "Atlas-Translation-Proxy")
 SAVE_PAYLOAD_FILES: bool = _env_bool("ATLAS_SAVE_PAYLOAD_FILES", False)
 """If True, write incoming request payloads to PAYLOAD_DIR for debugging."""

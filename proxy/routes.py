@@ -802,7 +802,11 @@ async def messages(request: Request) -> Response:
 async def _stream_openai_to_anthropic(rid: str, upstream_url: str, payload: bytes, resp: Response) -> StreamingResponse:
     """Stream an OpenAI SSE response from HF and re-emit as Anthropic SSE."""
     async def translate_stream():
-        # Yield message_start + content_block_start scaffolding
+        # Yield the message_start scaffolding.  Block lifecycles (text /
+        # thinking / tool_use) are managed inside openai_sse_to_anthropic_sse
+        # so reasoning_content and text deltas get distinct Anthropic content
+        # block indices (mixing them at index 0 is invalid per the Anthropic
+        # SDK).
         yield _sse_event("message_start", {
             "type": "message_start",
             "message": {
@@ -817,13 +821,19 @@ async def _stream_openai_to_anthropic(rid: str, upstream_url: str, payload: byte
             },
         })
 
-        yield _sse_event("content_block_start", {
-            "type": "content_block_start",
-            "index": 0,
-            "content_block": {"type": "text", "text": ""},
-        })
+        # state tracks which Anthropic content blocks have been opened so
+        # reasoning_content / text / tool_use each get a distinct index.
+        state: Dict[str, Any] = {
+            "text_open": False,
+            "text_index": -1,
+            "thinking_open": False,
+            "thinking_index": -1,
+            "next_index": 0,
+            "tool_blocks": {},
+        }
 
-        # Stream from upstream (proxy.iter_upstream_sse or proxy.forward already returned a StreamingResponse)
+        # Stream from upstream (proxy.forward already returned a StreamingResponse).
+        # The caller has already filtered [DONE] at the proxy layer.
         async for raw in resp.body_iterator:
             if not raw:
                 continue
@@ -852,17 +862,17 @@ async def _stream_openai_to_anthropic(rid: str, upstream_url: str, payload: byte
             except Exception:
                 pass
 
-            # Emit Anthropic events for each OpenAI delta
-            for evt_name, evt_data in openai_sse_to_anthropic_sse(chunk):
+            # Emit Anthropic events for each OpenAI delta. The state dict
+            # carries block-lifecycle across chunks so thinking and text
+            # get distinct content_block indices.
+            for evt_name, evt_data in openai_sse_to_anthropic_sse(chunk, state):
                 if evt_data is None:
                     continue
                 yield _sse_event(evt_name, evt_data)
 
-        # Close events
-        yield _sse_event("content_block_stop", {
-            "type": "content_block_stop",
-            "index": 0,
-        })
+        # Final message_stop. Per-chunk blocks are closed inside the
+        # translator when finish_reason arrives; emit message_stop for
+        # streams that ended without a finish_reason (rare but possible).
         yield _sse_event("message_stop", {
             "type": "message_stop",
         })
