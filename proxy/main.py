@@ -234,10 +234,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_allow_credentials = bool(CORS_ORIGINS) and "*" not in CORS_ORIGINS
+# Browsers reject allow_credentials=True with wildcard origins (CORS spec).
+# When CORS_ORIGINS is empty (no browser clients) or contains "*", disable
+# credentials so the proxy does not serve a malformed Access-Control-Allow-Origin
+# response.
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["x-request-id"],

@@ -472,8 +472,12 @@ def reload_system_prompt_override() -> str:
 # CORS
 # ---------------------------------------------------------------------------
 CORS_ORIGINS: List[str] = [
-    o.strip() for o in _env("CORS_ORIGINS", "*").split(",") if o.strip()
+    o.strip() for o in _env("CORS_ORIGINS", "").split(",") if o.strip()
 ]
+"""Explicit CORS origin allowlist. Empty list = no CORS headers at all
+(safest for server-to-server traffic). Wildcard "*" is rejected by
+browsers when ``allow_credentials=True`` (see main.py); use explicit
+origins like "https://app.example.com" for browser clients."""
 
 
 # ---------------------------------------------------------------------------

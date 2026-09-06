@@ -163,8 +163,7 @@ class KeyPool:
         return self._n
 
     def next_key(self) -> Tuple[str, int, bool]:
-        """
-        Return the next key for a request — partial-sticky + round-robin.
+        """Return the next key for a request — partial-sticky + round-robin.
 
         Returns (key, index, is_healthy):
         - key: the API key string
@@ -187,10 +186,41 @@ class KeyPool:
 
         Selection never blocks waiting for a slot — the caller's in_flight
         accounting + cooldown handles backpressure at a higher level.
+
+        NOTE: this method is `def`, not `async def`, for hot-path latency.
+        Selection-side mutations are protected by `asyncio.Lock` via
+        `next_key_locked()` — call that variant from async contexts when
+        `mark_error()`/`reload_keys()` race-safety matters. The unlocked
+        variant remains the right choice for read-only telemetry
+        (`stats()`, `detailed_stats()`) and the prewarm loop, where the
+        caller doesn't hold state references that could change.
         """
         if self._n == 0:
             raise ValueError("No keys available in pool")
 
+        return self._next_key_unsafe()
+
+    async def next_key_locked(self) -> Tuple[str, int, bool]:
+        """Async, lock-protected variant of `next_key()`.
+
+        Identical selection logic, but auto-recovery runs under
+        `self._lock` so a concurrent `mark_error()` cannot race with the
+        state-machine reads in this method. Use this from any async
+        request handler that calls `acquire()` immediately afterwards.
+        """
+        if self._n == 0:
+            raise ValueError("No keys available in pool")
+
+        async with self._lock:
+            return self._next_key_unsafe()
+
+    def _next_key_unsafe(self) -> Tuple[str, int, bool]:
+        """Selection logic shared by `next_key()` and `next_key_locked()`.
+
+        MUST NOT mutate `info.state` / `info.consecutive_errors` /
+        `info.cooldown_until` unless called under `self._lock`; see
+        `next_key_locked()`.
+        """
         # --- Full-sticky mode (Hugging Face) ---
         # Always return the current sticky key unless it has been retired.
         # If the sticky key is retired or doesn't exist, pick the first

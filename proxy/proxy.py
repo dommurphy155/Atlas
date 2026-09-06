@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
+import random
 import time
 from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
@@ -337,6 +338,18 @@ class ProxyCore:
                 s.get("in_flight", 0),
             )
 
+    @staticmethod
+    async def _retry_backoff(attempt: int) -> None:
+        """Exponential backoff + jitter between retry attempts.
+
+        Caps at 8s total sleep so we don't pile up requests against a
+        transiently-down provider. Without this, MAX_RETRIES=5 against a
+        flapping upstream would fire 6 requests within ~milliseconds of
+        each other, all through different keys — a textbook retry storm.
+        """
+        base = min(2 ** attempt, 8.0)
+        await asyncio.sleep(base + random.uniform(0.0, 0.5))
+
     def _headers(
         self, key: str, extra: Optional[Dict[str, str]] = None
     ) -> Dict[str, str]:
@@ -368,7 +381,9 @@ class ProxyCore:
         body = _enforce_default_model(body)
 
         for attempt in range(MAX_RETRIES + 1):
-            key, key_idx, is_healthy = self.pool.next_key()
+            # Lock-protected selection so concurrent mark_error / reload_keys
+            # cannot race with the state-machine reads inside next_key().
+            key, key_idx, is_healthy = await self.pool.next_key_locked()
             # Fast-fail when all keys are cooling/suspended — no point burning
             # MAX_RETRIES attempts against keys that will almost certainly fail.
             if not is_healthy and attempt == 0:
@@ -428,6 +443,7 @@ class ProxyCore:
                             attempt + 1,
                         )
                         last_status = result.status_code
+                        await self._retry_backoff(attempt)
                         continue
                     result.headers["x-request-id"] = request_id
                     return result
@@ -451,6 +467,7 @@ class ProxyCore:
                             attempt + 1,
                         )
                         last_status = status
+                        await self._retry_backoff(attempt)
                         continue
 
                     if status >= 400:
@@ -536,6 +553,13 @@ class ProxyCore:
                     await self.pool.release(key_idx)
 
             except (httpx.TimeoutException, httpx.TransportError) as e:
+                # NOTE: pool.acquire() already ran before this except, so we
+                # must release the in-flight slot here. The success-path
+                # finally{} at line ~538 does NOT cover this branch.
+                try:
+                    await self.pool.release(key_idx)
+                except Exception:
+                    pass
                 await self.pool.mark_error(key_idx, 599)
                 last_error = e
                 last_status = (
@@ -550,6 +574,8 @@ class ProxyCore:
                 )
                 if attempt >= MAX_RETRIES:
                     break
+                await self._retry_backoff(attempt)
+                continue
                 continue
 
         msg = f"proxy upstream error after retries: {last_error}"
