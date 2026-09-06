@@ -2,15 +2,26 @@
 # Atlas proxy installer.
 #
 # Usage:
-#   ./setup/install.sh                # full install (venv + systemd)
-#   ./setup/install.sh --user         # user-mode (no systemd, no sudo)
-#   ./setup/install.sh --uninstall    # remove systemd unit + venv
+#   ./setup/install.sh                # full install (auto-picks the best mode)
+#   ./setup/install.sh --user         # user-mode (no system systemd, even if root)
+#   ./setup/install.sh --uninstall    # remove unit + venv
 #   ./setup/install.sh --check        # verify install is healthy
 #   ./setup/install.sh --dry-run      # print what would happen, do nothing
 #   ./setup/install.sh --dry-run --uninstall   # preview removal
 #
 # Repo-location-agnostic — resolves its own root, so it works whether
 # the repo lives at ~/atlas_proxy, ~/proxy, or anywhere else.
+#
+# Mode selection (in priority order):
+#   1. systemd (system)         — root + system systemd
+#   2. systemd (user)           — non-root + systemctl --user available
+#   3. tmux                     — non-root + tmux on PATH
+#   4. nohup                    — POSIX nohup fallback, runs run.sh --bg
+#   5. manual                   — nothing worked, user must run ./run.sh
+#
+# The install NEVER fails because of the runtime mode — if nothing else
+# is available, it falls through to a nohup launch (or manual) so the
+# proxy can still be started by the user.
 
 set -euo pipefail
 
@@ -24,9 +35,10 @@ REPO_ROOT="$(cd "$SETUP_DIR/.." && pwd)"
 SERVICE_NAME="${ATLAS_SERVICE_NAME:-atlas-proxy}"
 SERVICE_USER="${ATLAS_SERVICE_USER:-root}"
 PY_BIN="${PYTHON:-python3}"
-# Binary name installed at /usr/local/bin/<BIN_NAME>.  Default 'atlas' for
-# general installs; set ATLAS_BIN_NAME=atlas2 for the DM fork to avoid
-# colliding with the upstream bundle's `atlas` command.
+# Binary name installed at /usr/local/bin/<BIN_NAME> (root) or
+# ~/.local/bin/<BIN_NAME> (non-root).  Default 'atlas' for general installs;
+# set ATLAS_BIN_NAME=atlas2 for the DM fork to avoid colliding with the
+# upstream bundle's `atlas` command.
 BIN_NAME="${ATLAS_BIN_NAME:-atlas}"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -37,9 +49,64 @@ fail() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 dry()  { printf '  \033[35m[DRY]\033[0m %s\n' "$*"; }
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
+# ---------------------------------------------------------------------------
+# Environment detection
+# ---------------------------------------------------------------------------
+is_root() { [[ ${EUID:-$(id -u)} -eq 0 ]]; }
+
+has_systemctl_system() {
+    command -v systemctl >/dev/null 2>&1 && \
+    [[ -d /run/systemd/system ]] 2>/dev/null
+}
+
+has_systemctl_user() {
+    command -v systemctl >/dev/null 2>&1 && \
+    systemctl --user status >/dev/null 2>&1
+}
+
+has_tmux() {
+    command -v tmux >/dev/null 2>&1
+}
+
+has_nohup() {
+    command -v nohup >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------------------
+# Path helpers
+# ---------------------------------------------------------------------------
+system_unit_path() {
+    echo "/etc/systemd/system/${SERVICE_NAME}.service"
+}
+
+user_unit_dir() {
+    echo "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+}
+
+user_unit_path() {
+    echo "$(user_unit_dir)/${SERVICE_NAME}.service"
+}
+
+cli_dest() {
+    if is_root; then
+        echo "/usr/local/bin/${BIN_NAME}"
+    else
+        echo "${HOME}/.local/bin/${BIN_NAME}"
+    fi
+}
+
+cli_dest_dir() {
+    local d
+    d="$(cli_dest)"
+    echo "${d%/*}"
+}
+
+# ---------------------------------------------------------------------------
+# Filesystem prep
+# ---------------------------------------------------------------------------
 ensure_dirs() {
     local dirs=(
         "$REPO_ROOT/data/openrouter_data"
@@ -82,6 +149,20 @@ ensure_venv() {
     fi
 }
 
+ensure_dotenv() {
+    if [[ ! -f "$REPO_ROOT/.env" && -f "$REPO_ROOT/.env.example" ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            dry "cp $REPO_ROOT/.env.example $REPO_ROOT/.env"
+            warn "would create .env from .env.example — edit it to set keys"
+        else
+            cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
+            warn "created .env from .env.example — edit it to set keys"
+        fi
+    else
+        info ".env present (or .env.example missing — skipped)"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # systemd unit generation — paths baked from $REPO_ROOT so the unit is
 # valid no matter where the repo lives.
@@ -113,21 +194,19 @@ StandardError=journal
 SyslogIdentifier=$SERVICE_NAME
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 EOF
     info "wrote $unit_path"
 }
 
-install_systemd() {
-    command -v systemctl >/dev/null 2>&1 || fail "systemctl not found — use --user mode instead"
-    [[ $EUID -eq 0 ]] || fail "systemd install requires root (or use --user)"
+# ---------------------------------------------------------------------------
+# systemd (system) install — root only
+# ---------------------------------------------------------------------------
+install_systemd_system() {
+    local unit
+    unit="$(system_unit_path)"
 
-    bold "Installing systemd unit"
-    local unit="/etc/systemd/system/${SERVICE_NAME}.service"
     if [[ -f "$unit" ]]; then
-        # Existing unit: only overwrite if it's ours (matched by marker).
-        # Refuse to clobber an operator's hand-written unit pointing at a
-        # different repo — silent clobber broke a prod setup today.
         if grep -q "Auto-generated by .*atlas_proxy/setup/install.sh" "$unit"; then
             info "refreshing existing unit (matches our marker)"
         else
@@ -141,7 +220,7 @@ install_systemd() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
         dry "systemctl daemon-reload"
         dry "systemctl enable $SERVICE_NAME.service"
-        ok "enabled $SERVICE_NAME.service (dry-run)"
+        ok "would enable $SERVICE_NAME.service (dry-run)"
         info "start with:   systemctl start $SERVICE_NAME"
         info "logs with:    journalctl -u $SERVICE_NAME -f"
     else
@@ -154,21 +233,161 @@ install_systemd() {
 }
 
 # ---------------------------------------------------------------------------
-# CLI binary install — symlinks atlas/bin/atlas to /usr/local/bin/$BIN_NAME.
+# systemd (user) install — non-root with systemctl --user available
+# ---------------------------------------------------------------------------
+install_systemd_user() {
+    local dir unit
+    dir="$(user_unit_dir)"
+    unit="$(user_unit_path)"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        dry "mkdir -p $dir"
+        dry "write user unit: $unit"
+        dry "systemctl --user daemon-reload"
+        dry "systemctl --user enable $SERVICE_NAME.service"
+        ok "would enable $SERVICE_NAME.service (user, dry-run)"
+        info "start with:   systemctl --user start $SERVICE_NAME"
+        info "logs with:    journalctl --user -u $SERVICE_NAME -f"
+    else
+        mkdir -p "$dir"
+        # Only the user-scoped marker — avoids clobbering a hand-written unit.
+        write_unit "$unit"
+        systemctl --user daemon-reload
+        systemctl --user enable "$SERVICE_NAME.service" >/dev/null
+        ok "enabled $SERVICE_NAME.service (user)"
+        info "start with:   systemctl --user start $SERVICE_NAME"
+        info "logs with:    journalctl --user -u $SERVICE_NAME -f"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# tmux install — non-root with tmux
+# ---------------------------------------------------------------------------
+install_tmux() {
+    local session="atlas-proxy"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        dry "tmux new-session -d -s $session \"$REPO_ROOT/run.sh\""
+        ok "would launch tmux session: $session"
+        info "attach with:   tmux attach -t $session"
+        info "detach with:   Ctrl-b d"
+    else
+        # Kill any existing session first so we always have a clean start.
+        tmux kill-session -t "$session" 2>/dev/null || true
+        tmux new-session -d -s "$session" "$REPO_ROOT/run.sh"
+        ok "launched tmux session: $session"
+        info "attach with:   tmux attach -t $session"
+        info "detach with:   Ctrl-b d"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# nohup install — POSIX fallback
+# ---------------------------------------------------------------------------
+install_nohup() {
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        dry "$REPO_ROOT/run.sh --bg"
+        ok "would launch in background via run.sh"
+    else
+        "$REPO_ROOT/run.sh" --bg
+        ok "launched in background via run.sh"
+    fi
+    info "logs with:    tail -f $REPO_ROOT/data/run.log"
+    info "stop with:    $REPO_ROOT/run.sh --stop"
+}
+
+# ---------------------------------------------------------------------------
+# Auto-pick the best runtime mode for this host.
+#
+# Returns the mode name via $RUNTIME_MODE and writes a one-line summary
+# to $RUNTIME_REASON so the caller can print it.
+# ---------------------------------------------------------------------------
+RUNTIME_MODE=""
+RUNTIME_REASON=""
+
+pick_runtime_mode() {
+    local requested="${1:-auto}"
+
+    if [[ "$requested" == "user" ]]; then
+        # --user flag: prefer user-scope systemd, fall through to tmux/nohup
+        if has_systemctl_user; then
+            RUNTIME_MODE="systemd-user"
+            RUNTIME_REASON="user-mode requested; systemctl --user available"
+            return
+        fi
+        if has_tmux; then
+            RUNTIME_MODE="tmux"
+            RUNTIME_REASON="user-mode requested; no systemd-user; tmux available"
+            return
+        fi
+        if has_nohup; then
+            RUNTIME_MODE="nohup"
+            RUNTIME_REASON="user-mode requested; no systemd-user or tmux; nohup available"
+            return
+        fi
+        RUNTIME_MODE="manual"
+        RUNTIME_REASON="user-mode requested; no runtime auto-launch available"
+        return
+    fi
+
+    # auto
+    if is_root && has_systemctl_system; then
+        RUNTIME_MODE="systemd"
+        RUNTIME_REASON="root + system systemd available"
+        return
+    fi
+    if has_systemctl_user; then
+        RUNTIME_MODE="systemd-user"
+        RUNTIME_REASON="non-root + systemctl --user available"
+        return
+    fi
+    if has_tmux; then
+        RUNTIME_MODE="tmux"
+        RUNTIME_REASON="no systemd; tmux available"
+        return
+    fi
+    if has_nohup; then
+        RUNTIME_MODE="nohup"
+        RUNTIME_REASON="no systemd or tmux; nohup available"
+        return
+    fi
+    RUNTIME_MODE="manual"
+    RUNTIME_REASON="no auto-launch runtime found; start the proxy manually"
+}
+
+# ---------------------------------------------------------------------------
+# Install dispatcher for the chosen mode
+# ---------------------------------------------------------------------------
+install_runtime() {
+    local mode="$RUNTIME_MODE"
+    case "$mode" in
+        systemd)      install_systemd_system ;;
+        systemd-user) install_systemd_user   ;;
+        tmux)         install_tmux           ;;
+        nohup)        install_nohup          ;;
+        manual)       warn "no runtime manager available — start with: $REPO_ROOT/run.sh" ;;
+        *)            fail "unknown runtime mode: $mode" ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# CLI binary install — symlinks atlas/bin/atlas to the right place.
 # Refuses to clobber an existing non-symlink of the same name.
 # ---------------------------------------------------------------------------
 install_cli_binary() {
     local src="$REPO_ROOT/atlas/bin/atlas"
     [[ -x "$src" ]] || fail "CLI script not found at $src"
 
-    local dest="/usr/local/bin/$BIN_NAME"
+    local dest
+    dest="$(cli_dest)"
+    local dest_dir
+    dest_dir="$(cli_dest_dir)"
 
     # If a file already exists at $dest and is NOT our symlink, refuse to
     # clobber it — the operator probably has their own command with that name.
     if [[ -e "$dest" && ! -L "$dest" ]]; then
         warn "$dest exists and is not a symlink — leaving it alone"
         warn "  remove it manually or set ATLAS_BIN_NAME to something else"
-        return 1
+        return 0
     fi
     # If the symlink points somewhere wrong, replace it.
     if [[ -L "$dest" ]]; then
@@ -184,17 +403,24 @@ install_cli_binary() {
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
+        dry "mkdir -p $dest_dir"
         dry "ln -sf $src $dest"
         ok "would install CLI: $dest → $src"
     else
+        mkdir -p "$dest_dir"
         ln -sf "$src" "$dest"
         ok "installed CLI: $dest → $src"
     fi
     info "use: $BIN_NAME status"
+    if ! is_root && [[ ":$PATH:" != *":$dest_dir:"* ]]; then
+        warn "  $dest_dir is not on your PATH — add it:"
+        warn "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
 }
 
 uninstall_cli_binary() {
-    local dest="/usr/local/bin/$BIN_NAME"
+    local dest
+    dest="$(cli_dest)"
     if [[ -L "$dest" ]]; then
         local current
         current="$(readlink "$dest" 2>/dev/null || true)"
@@ -212,57 +438,92 @@ uninstall_cli_binary() {
     info "CLI symlink $dest not present (or not ours)"
 }
 
+# ---------------------------------------------------------------------------
+# Top-level: install / uninstall / check
+# ---------------------------------------------------------------------------
 do_install() {
-    local mode="${1:-system}"
+    local requested="${1:-auto}"
     bold "Atlas proxy installer"
     info "repo: $REPO_ROOT"
     info "service name: $SERVICE_NAME"
+    info "user: $(id -un) (euid=${EUID:-?})"
     [[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN — no changes will be made"
 
     ensure_dirs
     ensure_venv
+    ensure_dotenv
 
-    if [[ ! -f "$REPO_ROOT/.env" && -f "$REPO_ROOT/.env.example" ]]; then
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-            dry "cp $REPO_ROOT/.env.example $REPO_ROOT/.env"
-            warn "would create .env from .env.example — edit it to set keys"
-        else
-            cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-            warn "created .env from .env.example — edit it to set keys"
-        fi
-    else
-        info ".env present (or .env.example missing — skipped)"
-    fi
+    pick_runtime_mode "$requested"
+    bold "Runtime: $RUNTIME_MODE"
+    info "  reason: $RUNTIME_REASON"
+    install_runtime
 
-    if [[ "$mode" == "user" ]]; then
-        ok "user-mode install complete (no systemd unit)"
-        info "run with: $REPO_ROOT/run.sh --bg"
-    else
-        install_systemd
-    fi
     install_cli_binary
     ok "install complete"
+    info "  next: $BIN_NAME status"
 }
 
 do_uninstall() {
     bold "Uninstalling"
     [[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN — no changes will be made"
-    local unit="/etc/systemd/system/${SERVICE_NAME}.service"
-    if [[ -f "$unit" ]]; then
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-            dry "systemctl disable --now $SERVICE_NAME.service"
-            dry "rm $unit"
-            dry "systemctl daemon-reload"
-            ok "would remove systemd unit"
-        else
-            systemctl disable --now "$SERVICE_NAME.service" 2>/dev/null || true
-            rm -f "$unit"
-            systemctl daemon-reload
-            ok "removed systemd unit"
+
+    # Try every possible runtime location — we don't know which one the
+    # user picked at install time.
+    local sys_unit user_unit
+    sys_unit="$(system_unit_path)"
+    user_unit="$(user_unit_path)"
+    for unit in "$sys_unit" "$user_unit"; do
+        if [[ -f "$unit" ]]; then
+            if [[ "$unit" == "$user_unit" ]] && has_systemctl_user; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    dry "systemctl --user disable --now $SERVICE_NAME.service"
+                    dry "rm $unit"
+                    dry "systemctl --user daemon-reload"
+                    ok "would remove user systemd unit"
+                else
+                    systemctl --user disable --now "$SERVICE_NAME.service" 2>/dev/null || true
+                    rm -f "$unit"
+                    systemctl --user daemon-reload
+                    ok "removed user systemd unit"
+                fi
+            elif [[ "$unit" == "$sys_unit" ]] && is_root && has_systemctl_system; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    dry "systemctl disable --now $SERVICE_NAME.service"
+                    dry "rm $unit"
+                    dry "systemctl daemon-reload"
+                    ok "would remove systemd unit"
+                else
+                    systemctl disable --now "$SERVICE_NAME.service" 2>/dev/null || true
+                    rm -f "$unit"
+                    systemctl daemon-reload
+                    ok "removed systemd unit"
+                fi
+            else
+                # Fall through — file exists but we don't have permission
+                # to touch the manager.  Just remove the file.
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    dry "rm $unit (no manager access)"
+                else
+                    rm -f "$unit"
+                fi
+            fi
         fi
-    else
-        info "no systemd unit installed"
+    done
+    # Kill tmux session if it exists.
+    if has_tmux; then
+        if tmux has-session -t atlas-proxy 2>/dev/null; then
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                dry "tmux kill-session -t atlas-proxy"
+            else
+                tmux kill-session -t atlas-proxy 2>/dev/null || true
+            fi
+        fi
     fi
+    # Kill the nohup-style run.sh background if present.
+    if [[ -f "$REPO_ROOT/run.sh" ]]; then
+        "$REPO_ROOT/run.sh" --stop 2>/dev/null || true
+    fi
+
     uninstall_cli_binary
     if [[ "$DRY_RUN" -eq 1 ]]; then
         dry "rm -f $REPO_ROOT/data/run.pid"
@@ -316,15 +577,23 @@ PY
         rc=1
     fi
 
-    # Systemd
-    if [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
-        ok "systemd unit installed"
-    else
-        info "no systemd unit (user-mode?)"
+    # Systemd units
+    local sys_unit user_unit
+    sys_unit="$(system_unit_path)"
+    user_unit="$(user_unit_path)"
+    if [[ -f "$sys_unit" ]]; then
+        ok "systemd unit (system): $sys_unit"
+    fi
+    if [[ -f "$user_unit" ]]; then
+        ok "systemd unit (user): $user_unit"
+    fi
+    if [[ ! -f "$sys_unit" && ! -f "$user_unit" ]]; then
+        info "no systemd unit (tmux/nohup/manual?)"
     fi
 
     # CLI binary
-    local bin_dest="/usr/local/bin/$BIN_NAME"
+    local bin_dest
+    bin_dest="$(cli_dest)"
     if [[ -L "$bin_dest" ]]; then
         local target
         target="$(readlink "$bin_dest" 2>/dev/null || true)"
@@ -346,13 +615,13 @@ PY
 # DRY_RUN must be visible inside the python heredoc in do_check.
 export DRY_RUN
 case "${1:-}" in
-    "")             DRY_RUN=0; do_install system ;;
+    "")             DRY_RUN=0; do_install auto ;;
     --user)         DRY_RUN=0; do_install user ;;
     --uninstall)    DRY_RUN=0; do_uninstall ;;
     --check)        DRY_RUN=0; do_check ;;
     --dry-run)      shift; DRY_RUN=1
                     case "${1:-}" in
-                        "")             do_install system ;;
+                        "")             do_install auto ;;
                         --user)         do_install user ;;
                         --uninstall)    do_uninstall ;;
                         --check)        do_check ;;

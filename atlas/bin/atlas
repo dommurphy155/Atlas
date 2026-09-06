@@ -7,7 +7,7 @@ proxy package.  Subcommands cover the full proxy lifecycle:
     atlas install / uninstall / start / stop / restart / status / logs
     atlas doctor / check / config / version
 
-When run via the symlink at /usr/local/bin/atlas2, it is hard-scoped to
+When run via the symlink at /usr/local/bin/atlas, it is hard-scoped to
 this proxy repo only — nothing in this CLI touches OpenRouter / NVIDIA /
 HuggingFace automation (those live in the full Atlas bundle, not here).
 """
@@ -53,7 +53,7 @@ PROXY_LOG_FILE = PROXY_PKG / "logs" / "atlas-proxy.log"
 # Service name matches the systemd unit the installer writes. Override with
 # ATLAS_SERVICE_NAME env var when this repo coexists with another atlas
 # install on the same box (e.g. ATLAS_SERVICE_NAME=atlas2-proxy.service).
-SERVICE_NAME = os.environ.get("ATLAS_SERVICE_NAME", "atlas-proxy-fork.service")
+SERVICE_NAME = os.environ.get("ATLAS_SERVICE_NAME", "atlas-proxy.service")
 
 # ---------------------------------------------------------------------------
 # Bootstrap: self-install rich into repo-local venv on first run

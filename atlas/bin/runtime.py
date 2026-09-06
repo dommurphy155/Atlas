@@ -6,7 +6,7 @@ Atlas should use to run, supervise, and surface logs for the proxy process.
 The runtime is selected at install time and persisted to
 `<repo>/data/runtime.json` so subsequent commands (`start`, `stop`, `status`,
 `logs`, `doctor`) know what to drive without re-detecting the world every
-time. Re-running `atlas2 install` re-detects and re-selects.
+time. Re-running `atlas install` re-detects and re-selects.
 
 Selection priority (highest first):
   1. systemd system  — Linux + root OR sudo works + systemctl + systemd PID 1
@@ -14,9 +14,9 @@ Selection priority (highest first):
                         session for current user
   3. tmux-equivalent — any of: tmux, psmux, tmuxw, lumux, qscn, wmux
   4. nohup          — POSIX nohup (always available on unix) — last
-                       mechanical fallback. Foreground `atlas2 start` and
+                       mechanical fallback. Foreground `atlas start` and
                        detached `nohup` are not equivalent: nohup survives
-                       terminal close; `atlas2 start` foreground blocks.
+                       terminal close; `atlas start` foreground blocks.
   5. manual         — Windows without a tmux-equivalent. User runs the
                        proxy as a foreground process from their shell.
 
@@ -134,10 +134,10 @@ def detect_env() -> RuntimeEnv:
     # sudo -n true: succeeds (rc=0) iff sudo exists AND is allowed without
     # a password. If it would prompt for a password, we treat sudo as
     # non-functional for our purposes — better to fall back than hang.
-    sudo_works = False
-    if shutil.which("sudo"):
-        r = _run_quiet(["sudo", "-n", "true"], timeout=3.0)
-        sudo_works = bool(r and r.returncode == 0)
+    # Having sudo installed is enough to make systemd a viable runtime
+    # candidate.  Privileged operations intentionally invoke normal sudo so
+    # the user can authenticate interactively when required.
+    sudo_works = bool(shutil.which("sudo"))
 
     has_systemctl = shutil.which("systemctl") is not None
 
@@ -216,7 +216,7 @@ def choose_mode(env: RuntimeEnv) -> RuntimeMode:
 
 @dataclass
 class RuntimeInfo:
-    """One-line description of the active runtime — used by `atlas2 status`."""
+    """One-line description of the active runtime — used by `atlas status`."""
     mode: RuntimeMode
     label: str        # "systemd" / "systemd-user" / "tmux" / "nohup" / "manual"
     session: str      # systemd unit / tmux session name / "atlas2-proxy"
@@ -252,11 +252,97 @@ class SystemdRuntime:
         )
 
     def _sudo_prefix(self) -> list[str]:
-        return [] if self.env.is_root else ["sudo", "--non-interactive"]
+        # Do not use --non-interactive: a normal sudo user may need to enter
+        # their password during installation or service management.
+        return [] if self.env.is_root else ["sudo"]
 
     def _run(self, *args: str) -> subprocess.CompletedProcess | None:
         cmd = self._sudo_prefix() + ["systemctl", *args]
         return _run_quiet(cmd, timeout=10.0)
+
+    def install(self) -> tuple[bool, str]:
+        unit = f"""[Unit]
+Description=Atlas Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={self.repo_root}
+ExecStart={self.venv_py} -m proxy.main
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-{self.repo_root / ".env"}
+
+[Install]
+WantedBy=multi-user.target
+"""
+        unit_path = Path("/etc/systemd/system") / self.service_name
+        tmp = self.repo_root / "data" / f".{self.service_name}.tmp"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(unit)
+
+        try:
+            r = self._run("stop", self.service_name)
+            install = self._sudo_prefix() + [
+                "install", "-m", "644", str(tmp), str(unit_path)
+            ]
+            ir = _run_quiet(install, timeout=10.0)
+            if ir is None or ir.returncode != 0:
+                return False, ir.stderr.strip() if ir else "failed to install systemd unit"
+
+            rr = self._run("daemon-reload")
+            if rr is None or rr.returncode != 0:
+                return False, rr.stderr.strip() if rr else "systemctl daemon-reload failed"
+
+            er = self._run("enable", self.service_name)
+            if er is None or er.returncode != 0:
+                return False, er.stderr.strip() if er else "systemctl enable failed"
+
+            sr = self._run("start", self.service_name)
+            if sr is None or sr.returncode != 0:
+                return False, sr.stderr.strip() if sr else "systemctl start failed"
+
+            return True, f"installed and started {self.service_name}"
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def install(self) -> tuple[bool, str]:
+        unit_dir = Path.home() / ".config" / "systemd" / "user"
+        unit_path = unit_dir / self.service_name
+
+        unit = f"""[Unit]
+Description=Atlas Proxy
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={self.repo_root}
+ExecStart={self.venv_py} -m proxy.main
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-{self.repo_root / ".env"}
+
+[Install]
+WantedBy=default.target
+"""
+
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        unit_path.write_text(unit)
+
+        r = self._run("daemon-reload")
+        if r is None or r.returncode != 0:
+            return False, r.stderr.strip() if r else "systemctl --user daemon-reload failed"
+
+        r = self._run("enable", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, r.stderr.strip() if r else "systemctl --user enable failed"
+
+        r = self._run("start", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, r.stderr.strip() if r else "systemctl --user start failed"
+
+        return True, f"installed and started {self.service_name}"
 
     def start(self) -> tuple[bool, str]:
         r = self._run("start", self.service_name)
@@ -346,7 +432,7 @@ class SystemdUserRuntime:
 
 # ---- tmux ----------------------------------------------------------------
 
-TMUX_SESSION = "atlas2"
+TMUX_SESSION = "atlas"
 
 
 class TmuxRuntime:
@@ -374,7 +460,7 @@ class TmuxRuntime:
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
         # -d: detach. -s: session name. The proxy is launched inside the
         # tmux session so its stdout/stderr go to the tmux scrollback; we
-        # ALSO tee to a log file for `atlas2 logs` to tail.
+        # ALSO tee to a log file for `atlas logs` to tail.
         cmd = (
             f"exec {self.venv_py} -m proxy.main 2>&1 | "
             f"tee -a {shlex_quote(str(self.log_file))}"
@@ -441,7 +527,7 @@ class NohupRuntime:
         self.info = RuntimeInfo(
             mode="nohup",
             label="nohup (user process)",
-            session="atlas2-proxy",
+            session="atlas-proxy",
             pid=None,
         )
 
@@ -529,13 +615,13 @@ class NohupRuntime:
 # ---- manual (Windows / last resort) --------------------------------------
 
 class ManualRuntime:
-    """No persistent supervisor available — user runs `atlas2 start` fg."""
+    """No persistent supervisor available — user runs `atlas start` fg."""
 
     def __init__(self) -> None:
         self.info = RuntimeInfo(
             mode="manual",
             label="manual (foreground)",
-            session="atlas2-proxy",
+            session="atlas-proxy",
             pid=None,
         )
 
@@ -608,6 +694,35 @@ def _runtime_paths(repo_root: Path, venv_py: Path):
         "venv_py": venv_py,
         "repo_root": repo_root,
     }
+
+
+def install_runtime(repo_root: Path, venv_py: Path,
+                   service_name: str) -> tuple[RuntimeMode, bool, str]:
+    """Detect, construct, install and persist the best runtime."""
+    env = detect_env()
+    mode = choose_mode(env)
+    runtime = build_runtime(mode, env, repo_root, venv_py, service_name)
+
+    if mode == "manual":
+        save_runtime_choice(
+            repo_root, env, mode,
+            runtime.info.__dict__,
+        )
+        return mode, True, "manual runtime selected"
+
+    installer = getattr(runtime, "install", None)
+    if installer is None:
+        ok, message = runtime.start()
+    else:
+        ok, message = installer()
+
+    if ok:
+        save_runtime_choice(
+            repo_root, env, mode,
+            runtime.info.__dict__,
+        )
+
+    return mode, ok, message
 
 
 def build_runtime(mode: RuntimeMode, env: RuntimeEnv, repo_root: Path,
