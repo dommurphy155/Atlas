@@ -1,0 +1,39 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Proxy runtime artefacts
+proxy/logs/
+data/openrouter_data/openroute_keys.txt
+data/openrouter_data/openroute_keys.txt.tmp
+data/huggingface_data/hf_keys.txt
+data/huggingface_data/hf_keys.txt.tmp
+data/huggingface_data/dead_hf_keys.txt
+data/proxy_data/runtime_provider.json
+data/payloads/
+
+# Env / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

@@ -481,7 +481,7 @@ UPSTREAM_REFERER: str = _env("ATLAS_UPSTREAM_REFERER", "https://localhost:8788")
 UPSTREAM_TITLE: str = _env("ATLAS_UPSTREAM_TITLE", "Atlas-Translation-Proxy")
 SAVE_PAYLOAD_FILES: bool = _env_bool("ATLAS_SAVE_PAYLOAD_FILES", False)
 """If True, write incoming request payloads to PAYLOAD_DIR for debugging."""
-PAYLOAD_DIR: str = _env("ATLAS_PAYLOAD_DIR", "/tmp/atlas_payloads")
+PAYLOAD_DIR: str = _env("ATLAS_PAYLOAD_DIR", str(_root_dir / "data" / "payloads"))
 
 
 # ---------------------------------------------------------------------------

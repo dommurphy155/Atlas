@@ -1,0 +1,557 @@
+#!/usr/bin/env python3
+"""atlas — CLI for the Atlas Translation Proxy.
+
+Repo-location agnostic: walks up from this script's location to find the
+proxy package.  Subcommands cover the full proxy lifecycle:
+
+    atlas install / uninstall / start / stop / restart / status / logs
+    atlas doctor / check / config / version
+
+When run via the symlink at /usr/local/bin/atlas2, it is hard-scoped to
+this proxy repo only — nothing in this CLI touches OpenRouter / NVIDIA /
+HuggingFace automation (those live in the full Atlas bundle, not here).
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Repo discovery
+# ---------------------------------------------------------------------------
+def _find_repo_root() -> Path:
+    """Repo root = parent of atlas/.
+
+    Layout: <repo>/atlas/bin/atlas  →  parent.parent
+    Falls back to CWD if the layout isn't found (still tries to import
+    proxy package from there).
+    """
+    here = Path(__file__).resolve().parent  # atlas/bin
+    candidate = here.parent.parent            # repo root
+    if (candidate / "proxy" / "main.py").is_file():
+        return candidate
+    cwd = Path.cwd().resolve()
+    if (cwd / "proxy" / "main.py").is_file():
+        return cwd
+    # Last resort — return what we think it is so error messages name it
+    return candidate
+
+
+REPO_ROOT = _find_repo_root()
+PROXY_PKG = REPO_ROOT / "proxy"
+DATA_DIR = REPO_ROOT / "data"
+VENV_PY = REPO_ROOT / ".venv" / "bin" / "python"
+PROXY_LOG_FILE = PROXY_PKG / "logs" / "atlas-proxy.log"
+# Service name matches the systemd unit the installer writes. Override with
+# ATLAS_SERVICE_NAME env var when this repo coexists with another atlas
+# install on the same box (e.g. ATLAS_SERVICE_NAME=atlas2-proxy.service).
+SERVICE_NAME = os.environ.get("ATLAS_SERVICE_NAME", "atlas-proxy.service")
+
+# ---------------------------------------------------------------------------
+# Bootstrap: self-install rich into repo-local venv on first run
+# ---------------------------------------------------------------------------
+def _bootstrap() -> None:
+    try:
+        import rich  # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    if not VENV_PY.exists():
+        print("==> First run: creating virtualenv...")
+        subprocess.run([sys.executable, "-m", "venv", str(REPO_ROOT / ".venv")], check=True)
+        VENV_PY.parent.mkdir(parents=True, exist_ok=True)
+        req = REPO_ROOT / "requirements.txt"
+        if req.exists():
+            subprocess.run([str(VENV_PY), "-m", "pip", "install", "--quiet", "-r", str(req)], check=True)
+        else:
+            subprocess.run([str(VENV_PY), "-m", "pip", "install", "--quiet", "rich"], check=True)
+    else:
+        # Venv exists but rich missing — install just rich (idempotent)
+        subprocess.run([str(VENV_PY), "-m", "pip", "install", "--quiet", "rich"], check=False)
+
+    # Re-exec into venv python
+    os.execv(str(VENV_PY), [str(VENV_PY), __file__, *sys.argv[1:]])
+
+
+if __name__ == "__main__" and __package__ in (None, ""):
+    _bootstrap()
+
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Prompt, Confirm
+from rich.text import Text
+
+CONSOLE = Console()
+VERSION = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Styling helpers
+# ---------------------------------------------------------------------------
+def _c(code, text): return f"{code}{text}[/]" if CONSOLE.is_terminal else text
+def green(t):  return f"[green]{t}[/green]"
+def cyan(t):   return f"[cyan]{t}[/cyan]"
+def yellow(t): return f"[yellow]{t}[/yellow]"
+def red(t):    return f"[red]{t}[/red]"
+def bold(t):   return f"[bold]{t}[/bold]"
+def dim(t):    return f"[dim]{t}[/dim]"
+def checkmark(ok): return green("✔") if ok else red("✘")
+def warn(t):   return f"[yellow]⚠ {t}[/yellow]"
+def info(t):   return f"[cyan]ℹ {t}[/cyan]"
+def section(title):
+    CONSOLE.print()
+    CONSOLE.print(f"[bold underline]{title}[/bold underline]")
+    CONSOLE.print()
+
+
+def _run(cmd, check=True, capture=False, timeout=30, env=None):
+    try:
+        return subprocess.run(
+            cmd, capture_output=capture, text=True, check=check,
+            timeout=timeout, env=env,
+        )
+    except FileNotFoundError:
+        CONSOLE.print(red(f"ERR: command not found: {cmd[0]}"))
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        CONSOLE.print(red(f"ERR: command timed out: {' '.join(cmd)}"))
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        CONSOLE.print(red(f"ERR: command failed (exit {e.returncode}): {' '.join(cmd)}"))
+        if e.stderr and capture:
+            CONSOLE.print(dim(e.stderr.strip()))
+        sys.exit(e.returncode)
+
+
+def has_systemctl() -> bool:
+    return shutil.which("systemctl") is not None
+
+
+def get_proxy_url() -> str:
+    return os.environ.get("ATLAS_PROXY_URL", "http://127.0.0.1:8788")
+
+
+def _resolve_listen() -> tuple[str, int]:
+    """Return (host, port) from .env / ATLAS_LISTEN_* / built-in default.
+
+    Runs the actual config import when possible — single source of truth.
+    """
+    sys.path.insert(0, str(REPO_ROOT))
+    try:
+        from proxy.config import LISTEN_HOST, LISTEN_PORT
+        return LISTEN_HOST, LISTEN_PORT
+    except Exception:
+        h = os.environ.get("LISTEN_HOST", "0.0.0.0")
+        p = int(os.environ.get("LISTEN_PORT", "8788"))
+        return h, p
+
+
+# ---------------------------------------------------------------------------
+# Service management (systemd + user-mode fallback via run.sh)
+# ---------------------------------------------------------------------------
+def service_action(action: str) -> bool:
+    if has_systemctl():
+        r = _run(["systemctl", action, SERVICE_NAME], check=False, capture=True)
+        if r.returncode == 0:
+            CONSOLE.print(green(f"OK: {action} {SERVICE_NAME}"))
+            return True
+        CONSOLE.print(red(f"ERR: {action} {SERVICE_NAME} (exit {r.returncode})"))
+        if r.stderr:
+            CONSOLE.print(dim(r.stderr.strip()))
+        return False
+    # User-mode fallback: drive run.sh --bg / --stop
+    if action == "start":
+        r = _run([str(REPO_ROOT / "run.sh"), "--bg"], check=False, capture=True)
+    elif action == "stop":
+        r = _run([str(REPO_ROOT / "run.sh"), "--stop"], check=False, capture=True)
+    elif action == "restart":
+        _run([str(REPO_ROOT / "run.sh"), "--stop"], check=False)
+        time.sleep(1)
+        r = _run([str(REPO_ROOT / "run.sh"), "--bg"], check=False, capture=True)
+    elif action == "status":
+        r = _run([str(REPO_ROOT / "run.sh"), "--status"], check=False, capture=True)
+    else:
+        r = _run(["true"], capture=True)
+    CONSOLE.print((r.stdout or "").strip())
+    return r.returncode == 0
+
+
+def is_service_active() -> bool:
+    if has_systemctl():
+        r = _run(["systemctl", "is-active", SERVICE_NAME], check=False, capture=True)
+        return r.stdout.strip() == "active"
+    # User-mode: pidfile-based heuristic
+    pidfile = DATA_DIR / "run.pid"
+    if not pidfile.exists():
+        return False
+    try:
+        pid = int(pidfile.read_text().strip())
+    except ValueError:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def http_health(url: str) -> tuple[bool, str]:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            return True, f"{resp.status} {resp.reason}"
+    except Exception as e:
+        return False, str(e)
+
+
+# ---------------------------------------------------------------------------
+# Subcommands
+# ---------------------------------------------------------------------------
+def cmd_install(args) -> int:
+    section("Atlas proxy — install")
+    CONSOLE.print(f"  Repo: {cyan(str(REPO_ROOT))}")
+    script = REPO_ROOT / "setup" / "install.sh"
+    if not script.exists():
+        CONSOLE.print(red(f"ERR: installer not found at {script}"))
+        return 1
+    if has_systemctl() and os.geteuid() == 0:
+        rc = subprocess.call(["bash", str(script)])
+    else:
+        rc = subprocess.call(["bash", str(script), "--user"])
+    return rc
+
+
+def cmd_uninstall(args) -> int:
+    section("Atlas proxy — uninstall")
+    script = REPO_ROOT / "setup" / "install.sh"
+    if not script.exists():
+        CONSOLE.print(red(f"ERR: installer not found at {script}"))
+        return 1
+    return subprocess.call(["bash", str(script), "--uninstall"])
+
+
+def cmd_start(args) -> int:
+    CONSOLE.print(f"{cyan('▶')} Starting proxy...")
+    return 0 if service_action("start") else 1
+
+
+def cmd_stop(args) -> int:
+    CONSOLE.print(f"{cyan('▶')} Stopping proxy...")
+    return 0 if service_action("stop") else 1
+
+
+def _write_runtime_provider(provider: str, model: str = "") -> None:
+    """Write data/proxy_data/runtime_provider.json — picked up by proxy on
+    next reload / restart."""
+    rp_dir = DATA_DIR / "proxy_data"
+    rp_dir.mkdir(parents=True, exist_ok=True)
+    rp_file = rp_dir / "runtime_provider.json"
+    config = {
+        "provider": provider,
+        "model": model,
+        "timestamp": int(time.time()),
+    }
+    rp_file.write_text(json.dumps(config, indent=2))
+    if model:
+        CONSOLE.print(dim(f"  runtime_provider.json → {provider} ({model})"))
+    else:
+        CONSOLE.print(dim(f"  runtime_provider.json → {provider}"))
+
+
+def cmd_restart(args) -> int:
+    provider = getattr(args, "provider", None)
+    model = getattr(args, "model", None) or ""
+    if provider:
+        section(f"Atlas proxy — restart [{provider}]")
+        _write_runtime_provider(provider, model)
+    else:
+        section("Atlas proxy — restart")
+    if not service_action("stop"):
+        return 1
+    time.sleep(1)
+    return 0 if service_action("start") else 1
+
+
+def cmd_status(args) -> int:
+    section("Atlas proxy — status")
+    host, port = _resolve_listen()
+    url = f"http://{host if host not in ('0.0.0.0',) else '127.0.0.1'}:{port}"
+
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column(style="bold", width=18)
+    table.add_column()
+    table.add_row("Repo", str(REPO_ROOT))
+    table.add_row("Service", SERVICE_NAME)
+    table.add_row("Listen", f"{host}:{port}")
+    table.add_row("URL", url)
+    table.add_row("Platform", f"{platform.system().lower()} (root={'yes' if os.geteuid() == 0 else 'no'})")
+    table.add_row("systemctl", "yes" if has_systemctl() else "no")
+    table.add_row("Service active", green("yes") if is_service_active() else yellow("no"))
+    ok, msg = http_health(f"{url}/health")
+    table.add_row("/health", green(msg) if ok else red(msg))
+    ok2, msg2 = http_health(f"{url}/v1/models")
+    table.add_row("/v1/models", green(msg2) if ok2 else red(msg2))
+    CONSOLE.print(table)
+    return 0 if (ok or ok2 or is_service_active()) else 1
+
+
+def cmd_logs(args) -> int:
+    section("Atlas proxy — logs")
+    if has_systemctl():
+        CONSOLE.print(dim(f"  journalctl -u {SERVICE_NAME} -f  (Ctrl-C to exit)"))
+        try:
+            subprocess.run(["journalctl", "-u", SERVICE_NAME, "-f", "--no-pager"], check=False)
+        except KeyboardInterrupt:
+            CONSOLE.print()
+        return 0
+    # User-mode: tail the file
+    if not PROXY_LOG_FILE.exists():
+        CONSOLE.print(yellow(f"No log file yet: {PROXY_LOG_FILE}"))
+        return 1
+    CONSOLE.print(dim(f"  tail -f {PROXY_LOG_FILE}  (Ctrl-C to exit)"))
+    try:
+        subprocess.run(["tail", "-n", "40", "-f", str(PROXY_LOG_FILE)], check=False)
+    except KeyboardInterrupt:
+        CONSOLE.print()
+    return 0
+
+
+def _check_item(name: str, ok: bool, detail: str = "") -> bool:
+    CONSOLE.print(f"  {checkmark(ok)} {name}" + (f"  {dim(detail)}" if detail else ""))
+    return ok
+
+
+def cmd_doctor(args) -> int:
+    section("Atlas proxy — doctor")
+    all_ok = True
+
+    # Repo & layout
+    all_ok &= _check_item("repo root", REPO_ROOT.is_dir(), str(REPO_ROOT))
+    all_ok &= _check_item("proxy package", (PROXY_PKG / "main.py").is_file())
+    for d in ("data/openrouter_data", "data/huggingface_data",
+              "data/proxy_data", "data/payloads", "proxy/logs"):
+        all_ok &= _check_item(d + "/", (REPO_ROOT / d).is_dir())
+
+    # Venv + deps
+    all_ok &= _check_item(".venv", VENV_PY.exists(), str(VENV_PY))
+    if VENV_PY.exists():
+        r = _run([str(VENV_PY), "-c", "import fastapi, uvicorn, httpx, orjson"],
+                 check=False, capture=True)
+        all_ok &= _check_item("deps importable", r.returncode == 0,
+                              r.stderr.strip() if r.returncode else "fastapi/uvicorn/httpx/orjson")
+
+    # Service / process
+    if has_systemctl():
+        r = _run(["systemctl", "is-active", SERVICE_NAME], check=False, capture=True)
+        all_ok &= _check_item(f"{SERVICE_NAME} active",
+                              r.stdout.strip() == "active",
+                              r.stdout.strip() or "inactive")
+    else:
+        all_ok &= _check_item("proxy process",
+                              is_service_active(),
+                              "pidfile check")
+
+    # HTTP
+    host, port = _resolve_listen()
+    url = f"http://{'127.0.0.1' if host in ('0.0.0.0',) else host}:{port}"
+    ok, msg = http_health(f"{url}/health")
+    all_ok &= _check_item(f"{url}/health responds", ok, msg)
+
+    # Key files (warn but don't fail)
+    or_keys = DATA_DIR / "openrouter_data" / "openroute_keys.txt"
+    hf_keys = DATA_DIR / "huggingface_data" / "hf_keys.txt"
+    if or_keys.exists():
+        n = sum(1 for ln in or_keys.read_text().splitlines() if ln.strip() and not ln.startswith("#"))
+        CONSOLE.print(f"  ℹ {cyan('OpenRouter keys')}: {n}")
+    else:
+        CONSOLE.print(f"  {warn('OpenRouter key file missing')}  ({or_keys})")
+    if hf_keys.exists():
+        n = sum(1 for ln in hf_keys.read_text().splitlines() if ln.strip() and not ln.startswith("#"))
+        CONSOLE.print(f"  ℹ {cyan('HuggingFace keys')}: {n}")
+    else:
+        CONSOLE.print(f"  {warn('HuggingFace key file missing')}  ({hf_keys})")
+
+    CONSOLE.print()
+    if all_ok:
+        CONSOLE.print(green("✔ doctor: all checks passed"))
+        return 0
+    CONSOLE.print(yellow("⚠ doctor: issues found (see above)"))
+    return 1
+
+
+def cmd_check(args) -> int:
+    """Thin wrapper around setup/install.sh --check (no colour spinner)."""
+    return subprocess.call(["bash", str(REPO_ROOT / "setup" / "install.sh"), "--check"])
+
+
+def cmd_config(args) -> int:
+    section("Atlas proxy — config")
+    sys.path.insert(0, str(REPO_ROOT))
+    try:
+        from proxy.config import (
+            LISTEN_HOST, LISTEN_PORT, PROVIDER, get_default_model,
+            KEY_FILE, HF_KEY_FILE, RUNTIME_PROVIDER_FILE,
+            SYSTEM_PROMPT_OVERRIDE_FILE, PAYLOAD_DIR, MAX_CONNECTIONS,
+        )
+    except Exception as e:
+        CONSOLE.print(red(f"ERR: could not import proxy.config: {e}"))
+        return 1
+
+    table = Table(box=box.SIMPLE, show_header=False, title=f"resolved at {time.strftime('%H:%M:%S')}")
+    table.add_column(style="bold", width=22)
+    table.add_column()
+    rows = [
+        ("provider", PROVIDER),
+        ("default_model", get_default_model()),
+        ("listen", f"{LISTEN_HOST}:{LISTEN_PORT}"),
+        ("key_file", KEY_FILE),
+        ("hf_key_file", HF_KEY_FILE),
+        ("runtime_provider", RUNTIME_PROVIDER_FILE),
+        ("prompt_override", SYSTEM_PROMPT_OVERRIDE_FILE),
+        ("payload_dir", PAYLOAD_DIR),
+        ("max_connections", str(MAX_CONNECTIONS)),
+    ]
+    for k, v in rows:
+        table.add_row(k, str(v))
+    CONSOLE.print(table)
+    return 0
+
+
+def cmd_version(args) -> int:
+    CONSOLE.print(f"atlas (proxy CLI) v{VERSION}")
+    CONSOLE.print(dim(f"  repo: {REPO_ROOT}"))
+    CONSOLE.print(dim(f"  python: {sys.executable.split('/')[-3:][-1] if '/.venv' in sys.executable else sys.version.split()[0]}"))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Argparse — fuzzy-matched subcommands
+# ---------------------------------------------------------------------------
+SUBCOMMANDS = {
+    "install":   cmd_install,
+    "uninstall": cmd_uninstall,
+    "start":     cmd_start,
+    "stop":      cmd_stop,
+    "restart":   cmd_restart,
+    "status":    cmd_status,
+    "st":        cmd_status,
+    "logs":      cmd_logs,
+    "log":       cmd_logs,
+    "doctor":    cmd_doctor,
+    "check":     cmd_check,
+    "config":    cmd_config,
+    "version":   cmd_version,
+    "--version": cmd_version,
+    "-v":        cmd_version,
+}
+
+
+def _fuzzy_command(name: str) -> str | None:
+    m = difflib.get_close_matches(name, SUBCOMMANDS.keys(), n=1, cutoff=0.5)
+    return m[0] if m else None
+
+
+HELP_TEXT = f"""
+[bold underline]ATLAS — Atlas Translation Proxy CLI[/bold underline]
+
+[dim]Repo-location agnostic — finds the proxy package from this script's path.[/dim]
+
+[bold]Lifecycle[/bold]
+  [cyan]atlas[/cyan] install              First-time setup (venv + systemd)
+  [cyan]atlas[/cyan] uninstall            Remove systemd unit + cleanup
+  [cyan]atlas[/cyan] start                Start the proxy
+  [cyan]atlas[/cyan] stop                 Stop the proxy
+  [cyan]atlas[/cyan] restart              Restart (keeps current provider)
+  [cyan]atlas[/cyan] restart --huggingface  Switch to HF on next start
+  [cyan]atlas[/cyan] restart --openrouter   Switch back to OpenRouter
+  [cyan]atlas[/cyan] restart --huggingface --model PROVIDER/MODEL
+
+[bold]Insight[/bold]
+  [cyan]atlas[/cyan] status               Service + HTTP + key summary
+  [cyan]atlas[/cyan] logs                 Tail logs (journald or file)
+  [cyan]atlas[/cyan] config               Show resolved config values
+  [cyan]atlas[/cyan] doctor               Diagnose common problems
+  [cyan]atlas[/cyan] check                Thin wrapper around setup/install.sh --check
+
+[bold]Misc[/bold]
+  [cyan]atlas[/cyan] version              Print version + paths
+
+[dim]Fuzzy-matched: 'atlas srt' → restart, 'atlas satus' → status.[/dim]
+"""
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="atlas",
+        description="Atlas Translation Proxy CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="",
+    )
+    sub = p.add_subparsers(dest="command", metavar="<command>")
+
+    sp_restart = sub.add_parser("restart", help="Restart the proxy")
+    sp_restart.add_argument("--huggingface", action="store_const", const="huggingface", dest="provider",
+                            help="Switch to HuggingFace provider")
+    sp_restart.add_argument("--openrouter", action="store_const", const="openrouter", dest="provider",
+                            help="Switch to OpenRouter provider")
+    sp_restart.add_argument("--model", help="Override default model for next start")
+
+    for name in ("install", "uninstall", "start", "stop", "status", "st",
+                 "logs", "log", "doctor", "check", "config", "version"):
+        sub.add_parser(name, help=f"{name} the proxy")
+
+    return p
+
+
+def main() -> int:
+    if len(sys.argv) == 1 or sys.argv[1] in ("-h", "--help", "help"):
+        CONSOLE.print(Panel(HELP_TEXT, border_style="cyan", box=box.ROUNDED))
+        return 0
+
+    # Special-case --version / -v before argparse so they don't get fuzzed
+    if sys.argv[1] in ("--version", "-v"):
+        return cmd_version(None)
+
+    # Try exact match first
+    cmd = sys.argv[1]
+    handler = SUBCOMMANDS.get(cmd)
+
+    if handler is None:
+        # Fuzzy match
+        suggestion = _fuzzy_command(cmd)
+        if suggestion:
+            CONSOLE.print(yellow(f"Unknown command '{cmd}' — did you mean '{suggestion}'?"))
+            if Confirm.ask("Run it?", default=True):
+                sys.argv[1] = suggestion
+                cmd = suggestion
+                handler = SUBCOMMANDS[cmd]
+            else:
+                return 2
+        else:
+            CONSOLE.print(red(f"Unknown command: {cmd}"))
+            CONSOLE.print(dim("Run 'atlas --help' for the command list."))
+            return 2
+
+    parser = build_parser()
+    args = parser.parse_args(sys.argv[1:])
+    try:
+        return handler(args)
+    except KeyboardInterrupt:
+        CONSOLE.print()
+        CONSOLE.print(yellow("interrupted"))
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
