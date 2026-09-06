@@ -1,0 +1,659 @@
+"""Atlas proxy runtime abstraction.
+
+Decides — at install time and at every command invocation — which mechanism
+Atlas should use to run, supervise, and surface logs for the proxy process.
+
+The runtime is selected at install time and persisted to
+`<repo>/data/runtime.json` so subsequent commands (`start`, `stop`, `status`,
+`logs`, `doctor`) know what to drive without re-detecting the world every
+time. Re-running `atlas2 install` re-detects and re-selects.
+
+Selection priority (highest first):
+  1. systemd system  — Linux + root OR sudo works + systemctl + systemd PID 1
+  2. systemd --user  — Linux + XDG_RUNTIME_DIR + systemctl --user + loginctl
+                        session for current user
+  3. tmux-equivalent — any of: tmux, psmux, tmuxw, lumux, qscn, wmux
+  4. nohup          — POSIX nohup (always available on unix) — last
+                       mechanical fallback. Foreground `atlas2 start` and
+                       detached `nohup` are not equivalent: nohup survives
+                       terminal close; `atlas2 start` foreground blocks.
+  5. manual         — Windows without a tmux-equivalent. User runs the
+                       proxy as a foreground process from their shell.
+
+The "systemd system" mode is always preferred when actually usable. The
+fallbacks only kick in when root / sudo / systemd genuinely are unavailable.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Literal, Protocol
+
+
+# ---------------------------------------------------------------------------
+# Environment detection
+# ---------------------------------------------------------------------------
+
+OSFamily = Literal["linux", "macos", "windows", "other"]
+RuntimeMode = Literal["systemd", "systemd-user", "tmux", "nohup", "manual"]
+
+# Tmux-equivalent binaries (tmux itself + native Windows clones).
+TMUX_BINARIES = ("tmux", "psmux", "tmuxw", "lumux", "qscn", "wmux")
+
+
+@dataclass
+class RuntimeEnv:
+    """Snapshot of the host environment relevant to runtime selection.
+
+    Frozen after detection — all fields are read-only facts, not preferences.
+    """
+    os: OSFamily
+    is_root: bool
+    sudo_works: bool
+    has_systemctl: bool
+    systemd_pid1: bool
+    has_user_systemd: bool
+    has_loginctl: bool
+    tmux_bin: str | None  # first tmux-equivalent on PATH
+    has_nohup: bool
+
+    # Convenience derivations
+    @property
+    def systemd_system_usable(self) -> bool:
+        return (
+            self.os == "linux"
+            and self.has_systemctl
+            and self.systemd_pid1
+            and (self.is_root or self.sudo_works)
+        )
+
+    @property
+    def systemd_user_usable(self) -> bool:
+        return (
+            self.os == "linux"
+            and self.has_systemctl
+            and self.has_user_systemd
+        )
+
+    @property
+    def tmux_usable(self) -> bool:
+        return self.tmux_bin is not None
+
+    @property
+    def nohup_usable(self) -> bool:
+        return self.os in ("linux", "macos", "other") and self.has_nohup
+
+
+def detect_os() -> OSFamily:
+    sysname = platform.system().lower()
+    if sysname == "linux":
+        return "linux"
+    if sysname == "darwin":
+        return "macos"
+    if sysname in ("windows", "win32"):
+        return "windows"
+    return "other"
+
+
+def _run_quiet(cmd: list[str], timeout: float = 2.0) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def _find_tmux() -> str | None:
+    for b in TMUX_BINARIES:
+        p = shutil.which(b)
+        if p:
+            return p
+    return None
+
+
+def detect_env() -> RuntimeEnv:
+    """Snapshot of the current host — pure, no side effects, no I/O."""
+    os_name = detect_os()
+    is_root = False
+    try:
+        is_root = (os.geteuid() == 0)  # POSIX
+    except AttributeError:
+        # Windows — no geteuid. Check for Administrator via net session.
+        r = _run_quiet(["net", "session"], timeout=2.0)
+        is_root = bool(r and r.returncode == 0)
+
+    # sudo -n true: succeeds (rc=0) iff sudo exists AND is allowed without
+    # a password. If it would prompt for a password, we treat sudo as
+    # non-functional for our purposes — better to fall back than hang.
+    sudo_works = False
+    if shutil.which("sudo"):
+        r = _run_quiet(["sudo", "-n", "true"], timeout=3.0)
+        sudo_works = bool(r and r.returncode == 0)
+
+    has_systemctl = shutil.which("systemctl") is not None
+
+    # systemd as PID 1 — the canonical "systemd is the system manager" check.
+    systemd_pid1 = os_name == "linux" and Path("/proc/1/comm").exists() \
+        and Path("/proc/1/comm").read_text().strip() == "systemd"
+
+    # Per-user systemd: needs XDG_RUNTIME_DIR=/run/user/<uid> + systemctl --user
+    # reachable. loginctl is a useful proxy for "is there a login session".
+    has_user_systemd = False
+    has_loginctl = shutil.which("loginctl") is not None
+    if os_name == "linux" and has_systemctl and not is_root:
+        xdg = os.environ.get("XDG_RUNTIME_DIR", "")
+        if not xdg:
+            try:
+                xdg = f"/run/user/{os.getuid()}"
+            except AttributeError:
+                xdg = ""
+        if xdg and Path(xdg).is_dir():
+            r = _run_quiet(["systemctl", "--user", "is-active", "atlas-proxy.service"])
+            # Don't require the service to exist; just require the call to not
+            # fail with "Failed to connect to bus".
+            if r and "Failed to connect" not in (r.stderr or ""):
+                has_user_systemd = True
+
+    tmux_bin = _find_tmux()
+    # Windows: also check PATHEXT-less exe names; shutil.which handles that.
+
+    # nohup is a shell builtin on some shells but also a binary on most
+    # unix systems. Test for the binary form. Windows has no equivalent —
+    # we'd never invoke nohup there.
+    has_nohup = os_name in ("linux", "macos", "other") and shutil.which("nohup") is not None
+
+    return RuntimeEnv(
+        os=os_name,
+        is_root=is_root,
+        sudo_works=sudo_works,
+        has_systemctl=has_systemctl,
+        systemd_pid1=systemd_pid1,
+        has_user_systemd=has_user_systemd,
+        has_loginctl=has_loginctl,
+        tmux_bin=tmux_bin,
+        has_nohup=has_nohup,
+    )
+
+
+def choose_mode(env: RuntimeEnv) -> RuntimeMode:
+    """Pick the best runtime mode for the given environment.
+
+    Order of preference (highest first):
+      1. systemd         — full system service, root or sudo
+      2. systemd-user    — user-scoped systemd service
+      3. tmux            — detached user tmux session
+      4. nohup           — POSIX nohup, last mechanical fallback
+      5. manual          — Windows without tmux — user runs it themselves
+    """
+    if env.systemd_system_usable:
+        return "systemd"
+    if env.systemd_user_usable:
+        return "systemd-user"
+    if env.tmux_usable:
+        return "tmux"
+    if env.nohup_usable:
+        return "nohup"
+    return "manual"
+
+
+# ---------------------------------------------------------------------------
+# Runtime-mode implementations
+# ---------------------------------------------------------------------------
+#
+# A Runtime is a strategy for managing the proxy process: start it, stop it,
+# check if it's running, and surface its logs. Each impl is small and
+# self-contained. The CLI commands dispatch to the right one via get_runtime().
+
+
+@dataclass
+class RuntimeInfo:
+    """One-line description of the active runtime — used by `atlas2 status`."""
+    mode: RuntimeMode
+    label: str        # "systemd" / "systemd-user" / "tmux" / "nohup" / "manual"
+    session: str      # systemd unit / tmux session name / "atlas2-proxy"
+    pid: int | None
+    extra: dict = field(default_factory=dict)
+
+
+class Runtime(Protocol):
+    """Common interface for all runtime implementations."""
+    info: RuntimeInfo
+
+    def start(self) -> tuple[bool, str]: ...
+    def stop(self) -> tuple[bool, str]: ...
+    def status(self) -> tuple[bool, str]: ...
+    def logs(self, follow: bool = True) -> int: ...
+    def env_summary(self) -> dict: ...
+
+
+# ---- systemd (system) -----------------------------------------------------
+
+class SystemdRuntime:
+    def __init__(self, env: RuntimeEnv, repo_root: Path, service_name: str,
+                 venv_py: Path) -> None:
+        self.env = env
+        self.repo_root = repo_root
+        self.service_name = service_name
+        self.venv_py = venv_py
+        self.info = RuntimeInfo(
+            mode="systemd",
+            label="systemd",
+            session=service_name,
+            pid=None,
+        )
+
+    def _sudo_prefix(self) -> list[str]:
+        return [] if self.env.is_root else ["sudo", "--non-interactive"]
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess | None:
+        cmd = self._sudo_prefix() + ["systemctl", *args]
+        return _run_quiet(cmd, timeout=10.0)
+
+    def start(self) -> tuple[bool, str]:
+        r = self._run("start", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, (r.stderr.strip() if r else "systemctl not available")
+        return True, f"started {self.service_name}"
+
+    def stop(self) -> tuple[bool, str]:
+        r = self._run("stop", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, (r.stderr.strip() if r else "systemctl not available")
+        return True, f"stopped {self.service_name}"
+
+    def status(self) -> tuple[bool, str]:
+        r = self._run("is-active", self.service_name)
+        if r is None:
+            return False, "systemctl unavailable"
+        active = r.stdout.strip() == "active"
+        return active, r.stdout.strip()
+
+    def logs(self, follow: bool = True) -> int:
+        cmd = ["journalctl", "-u", self.service_name, "--no-pager"]
+        if follow:
+            cmd.append("-f")
+        # journalctl usually needs sudo for system units
+        cmd = self._sudo_prefix() + cmd
+        try:
+            return subprocess.call(cmd)
+        except FileNotFoundError:
+            return 1
+
+    def env_summary(self) -> dict:
+        return {"mode": "systemd", "service_name": self.service_name}
+
+
+# ---- systemd --user -------------------------------------------------------
+
+class SystemdUserRuntime:
+    def __init__(self, env: RuntimeEnv, repo_root: Path, service_name: str,
+                 venv_py: Path) -> None:
+        self.env = env
+        self.repo_root = repo_root
+        self.service_name = service_name
+        self.venv_py = venv_py
+        self.info = RuntimeInfo(
+            mode="systemd-user",
+            label="systemd --user",
+            session=service_name,
+            pid=None,
+        )
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess | None:
+        cmd = ["systemctl", "--user", *args]
+        return _run_quiet(cmd, timeout=10.0)
+
+    def start(self) -> tuple[bool, str]:
+        r = self._run("start", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, (r.stderr.strip() if r else "systemctl --user unavailable")
+        return True, f"started {self.service_name}"
+
+    def stop(self) -> tuple[bool, str]:
+        r = self._run("stop", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, (r.stderr.strip() if r else "systemctl --user unavailable")
+        return True, f"stopped {self.service_name}"
+
+    def status(self) -> tuple[bool, str]:
+        r = self._run("is-active", self.service_name)
+        if r is None:
+            return False, "systemctl --user unavailable"
+        active = r.stdout.strip() == "active"
+        return active, r.stdout.strip()
+
+    def logs(self, follow: bool = True) -> int:
+        cmd = ["journalctl", "--user", "-u", self.service_name, "--no-pager"]
+        if follow:
+            cmd.append("-f")
+        try:
+            return subprocess.call(cmd)
+        except FileNotFoundError:
+            return 1
+
+    def env_summary(self) -> dict:
+        return {"mode": "systemd-user", "service_name": self.service_name}
+
+
+# ---- tmux ----------------------------------------------------------------
+
+TMUX_SESSION = "atlas2"
+
+
+class TmuxRuntime:
+    def __init__(self, env: RuntimeEnv, repo_root: Path, tmux_bin: str,
+                 venv_py: Path, log_file: Path) -> None:
+        self.env = env
+        self.repo_root = repo_root
+        self.tmux_bin = tmux_bin
+        self.venv_py = venv_py
+        self.log_file = log_file
+        self.session = TMUX_SESSION
+        self.info = RuntimeInfo(
+            mode="tmux",
+            label=f"tmux ({Path(tmux_bin).name})",
+            session=self.session,
+            pid=None,
+        )
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess | None:
+        return _run_quiet([self.tmux_bin, *args], timeout=5.0)
+
+    def start(self) -> tuple[bool, str]:
+        if self.status()[0]:
+            return True, f"already running in tmux session '{self.session}'"
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        # -d: detach. -s: session name. The proxy is launched inside the
+        # tmux session so its stdout/stderr go to the tmux scrollback; we
+        # ALSO tee to a log file for `atlas2 logs` to tail.
+        cmd = (
+            f"exec {self.venv_py} -m proxy.main 2>&1 | "
+            f"tee -a {shlex_quote(str(self.log_file))}"
+        )
+        r = self._run(
+            "new-session", "-d", "-s", self.session, "-c", str(self.repo_root),
+            "bash", "-lc", cmd,
+        )
+        if r is None or r.returncode != 0:
+            return False, (r.stderr.strip() if r else f"{self.tmux_bin} failed")
+        return True, f"started in tmux session '{self.session}'"
+
+    def stop(self) -> tuple[bool, str]:
+        if not self.status()[0]:
+            return True, "not running"
+        r = self._run("kill-session", "-t", self.session)
+        if r is None or r.returncode != 0:
+            return False, (r.stderr.strip() if r else f"{self.tmux_bin} kill failed")
+        return True, f"killed tmux session '{self.session}'"
+
+    def status(self) -> tuple[bool, str]:
+        r = self._run("has-session", "-t", self.session)
+        if r is None:
+            return False, f"{self.tmux_bin} unavailable"
+        return r.returncode == 0, \
+            (f"running in tmux '{self.session}'" if r.returncode == 0 else "stopped")
+
+    def logs(self, follow: bool = True) -> int:
+        # Tail the tee'd log file. tmux itself has capture-pane but a flat
+        # file is more portable across tmux equivalents.
+        if not self.log_file.exists():
+            print(f"No log file yet: {self.log_file}", file=sys.stderr)
+            return 1
+        cmd = ["tail", "-n", "40"]
+        if follow:
+            cmd.append("-f")
+        cmd.append(str(self.log_file))
+        try:
+            return subprocess.call(cmd)
+        except FileNotFoundError:
+            return 1
+
+    def env_summary(self) -> dict:
+        return {
+            "mode": "tmux",
+            "tmux_bin": self.tmux_bin,
+            "session": self.session,
+            "log_file": str(self.log_file),
+        }
+
+
+# ---- nohup (POSIX fallback) ----------------------------------------------
+
+class NohupRuntime:
+    """Last mechanical fallback: nohup + pidfile. Foreground mode for manual."""
+
+    def __init__(self, env: RuntimeEnv, repo_root: Path, venv_py: Path,
+                 pid_file: Path, log_file: Path) -> None:
+        self.env = env
+        self.repo_root = repo_root
+        self.venv_py = venv_py
+        self.pid_file = pid_file
+        self.log_file = log_file
+        self.info = RuntimeInfo(
+            mode="nohup",
+            label="nohup (user process)",
+            session="atlas2-proxy",
+            pid=None,
+        )
+
+    def start(self) -> tuple[bool, str]:
+        if self.status()[0]:
+            return True, f"already running (pid={self._pid()})"
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_file.open("ab") as fh:
+            proc = subprocess.Popen(
+                [str(self.venv_py), "-m", "proxy.main"],
+                stdout=fh, stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                cwd=str(self.repo_root),
+                start_new_session=True,
+            )
+        self.pid_file.parent.mkdir(parents=True, exist_ok=True)
+        self.pid_file.write_text(str(proc.pid))
+        return True, f"started (pid={proc.pid}, log={self.log_file})"
+
+    def stop(self) -> tuple[bool, str]:
+        pid = self._pid()
+        if pid is None:
+            self.pid_file.unlink(missing_ok=True)
+            return True, "not running"
+        try:
+            os.kill(pid, 15)  # SIGTERM
+        except ProcessLookupError:
+            self.pid_file.unlink(missing_ok=True)
+            return True, "not running"
+        # Wait briefly for graceful exit
+        for _ in range(20):
+            try:
+                os.kill(pid, 0)
+                time.sleep(0.1)
+            except ProcessLookupError:
+                break
+        else:
+            try:
+                os.kill(pid, 9)  # SIGKILL fallback
+            except ProcessLookupError:
+                pass
+        self.pid_file.unlink(missing_ok=True)
+        return True, f"stopped (pid={pid})"
+
+    def status(self) -> tuple[bool, str]:
+        pid = self._pid()
+        if pid is None:
+            return False, "not running"
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            self.pid_file.unlink(missing_ok=True)
+            return False, "not running"
+        return True, f"running (pid={pid})"
+
+    def logs(self, follow: bool = True) -> int:
+        if not self.log_file.exists():
+            print(f"No log file yet: {self.log_file}", file=sys.stderr)
+            return 1
+        cmd = ["tail", "-n", "40"]
+        if follow:
+            cmd.append("-f")
+        cmd.append(str(self.log_file))
+        try:
+            return subprocess.call(cmd)
+        except FileNotFoundError:
+            return 1
+
+    def _pid(self) -> int | None:
+        if not self.pid_file.exists():
+            return None
+        try:
+            return int(self.pid_file.read_text().strip())
+        except (ValueError, OSError):
+            return None
+
+    def env_summary(self) -> dict:
+        return {
+            "mode": "nohup",
+            "pid_file": str(self.pid_file),
+            "log_file": str(self.log_file),
+        }
+
+
+# ---- manual (Windows / last resort) --------------------------------------
+
+class ManualRuntime:
+    """No persistent supervisor available — user runs `atlas2 start` fg."""
+
+    def __init__(self) -> None:
+        self.info = RuntimeInfo(
+            mode="manual",
+            label="manual (foreground)",
+            session="atlas2-proxy",
+            pid=None,
+        )
+
+    def start(self) -> tuple[bool, str]:
+        return False, (
+            "No persistent supervisor available on this system.\n"
+            "Run the proxy manually:  cd <repo> && .venv/bin/python -m proxy.main"
+        )
+
+    def stop(self) -> tuple[bool, str]:
+        return False, "No persistent supervisor — manually Ctrl-C the running process."
+
+    def status(self) -> tuple[bool, str]:
+        return False, "manual mode — no supervisor tracks the process"
+
+    def logs(self, follow: bool = True) -> int:
+        print("No supervisor to read logs from. Start the proxy manually to see its output.", file=sys.stderr)
+        return 1
+
+    def env_summary(self) -> dict:
+        return {"mode": "manual"}
+
+
+# ---------------------------------------------------------------------------
+# Persistence: data/runtime.json
+# ---------------------------------------------------------------------------
+
+RUNTIME_FILE_NAME = "runtime.json"
+
+
+def _runtime_path(repo_root: Path) -> Path:
+    return repo_root / "data" / RUNTIME_FILE_NAME
+
+
+def load_runtime_choice(repo_root: Path) -> dict | None:
+    """Read the previously chosen runtime — None if not yet installed."""
+    p = _runtime_path(repo_root)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def save_runtime_choice(repo_root: Path, env: RuntimeEnv, mode: RuntimeMode,
+                        info: dict) -> None:
+    """Persist the install-time choice for subsequent commands."""
+    p = _runtime_path(repo_root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "mode": mode,
+        "env": asdict(env),
+        "info": info,
+        "installed_at": int(time.time()),
+    }
+    p.write_text(json.dumps(payload, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Factory: build the right Runtime for the current situation
+# ---------------------------------------------------------------------------
+
+def _runtime_paths(repo_root: Path, venv_py: Path):
+    """Compute per-runtime paths (pidfile, log file) — kept centralised."""
+    data_dir = repo_root / "data"
+    return {
+        "pid_file": data_dir / "run.pid",
+        "log_file": data_dir / "run.log",
+        "venv_py": venv_py,
+        "repo_root": repo_root,
+    }
+
+
+def build_runtime(mode: RuntimeMode, env: RuntimeEnv, repo_root: Path,
+                  venv_py: Path, service_name: str) -> Runtime:
+    """Construct the Runtime implementation for the chosen mode."""
+    paths = _runtime_paths(repo_root, venv_py)
+    if mode == "systemd":
+        return SystemdRuntime(env, repo_root, service_name, paths["venv_py"])
+    if mode == "systemd-user":
+        return SystemdUserRuntime(env, repo_root, service_name, paths["venv_py"])
+    if mode == "tmux":
+        tmux_bin = env.tmux_bin or shutil.which("tmux") or "tmux"
+        return TmuxRuntime(env, repo_root, tmux_bin, paths["venv_py"],
+                           paths["log_file"])
+    if mode == "nohup":
+        return NohupRuntime(env, repo_root, paths["venv_py"],
+                            paths["pid_file"], paths["log_file"])
+    if mode == "manual":
+        return ManualRuntime()
+    raise ValueError(f"unknown runtime mode: {mode!r}")
+
+
+def get_runtime(repo_root: Path, venv_py: Path, service_name: str) -> Runtime:
+    """Pick the active Runtime for subsequent commands.
+
+    Strategy:
+      1. If `data/runtime.json` exists, honour its mode.
+      2. Otherwise (legacy install) — prefer systemd if the unit is alive,
+         otherwise nohup. This preserves existing installs unchanged.
+    """
+    persisted = load_runtime_choice(repo_root)
+    env = detect_env()
+    if persisted:
+        mode = persisted.get("mode", "nohup")
+        return build_runtime(mode, env, repo_root, venv_py, service_name)
+    # Legacy fallback
+    if env.systemd_system_usable:
+        return build_runtime("systemd", env, repo_root, venv_py, service_name)
+    return build_runtime("nohup", env, repo_root, venv_py, service_name)
+
+
+# ---------------------------------------------------------------------------
+# Tiny helpers used by the wizard
+# ---------------------------------------------------------------------------
+
+def shlex_quote(s: str) -> str:
+    """Quote a string for safe inclusion in a shell command."""
+    import shlex
+    return shlex.quote(s)

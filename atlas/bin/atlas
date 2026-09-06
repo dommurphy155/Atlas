@@ -53,7 +53,7 @@ PROXY_LOG_FILE = PROXY_PKG / "logs" / "atlas-proxy.log"
 # Service name matches the systemd unit the installer writes. Override with
 # ATLAS_SERVICE_NAME env var when this repo coexists with another atlas
 # install on the same box (e.g. ATLAS_SERVICE_NAME=atlas2-proxy.service).
-SERVICE_NAME = os.environ.get("ATLAS_SERVICE_NAME", "atlas-proxy.service")
+SERVICE_NAME = os.environ.get("ATLAS_SERVICE_NAME", "atlas-proxy-fork.service")
 
 # ---------------------------------------------------------------------------
 # Bootstrap: self-install rich into repo-local venv on first run
@@ -160,50 +160,42 @@ def _resolve_listen() -> tuple[str, int]:
 # ---------------------------------------------------------------------------
 # Service management (systemd + user-mode fallback via run.sh)
 # ---------------------------------------------------------------------------
+def _current_runtime():
+    """Build the active Runtime impl — reads data/runtime.json, falls back to legacy."""
+    sys.path.insert(0, str(REPO_ROOT / "atlas"))
+    try:
+        from bin.runtime import get_runtime
+        return get_runtime(REPO_ROOT, VENV_PY, SERVICE_NAME)
+    except Exception as e:
+        CONSOLE.print(red(f"runtime detection failed: {e}"))
+        sys.exit(1)
+
+
 def service_action(action: str) -> bool:
-    if has_systemctl():
-        r = _run(["systemctl", action, SERVICE_NAME], check=False, capture=True)
-        if r.returncode == 0:
-            CONSOLE.print(green(f"OK: {action} {SERVICE_NAME}"))
-            return True
-        CONSOLE.print(red(f"ERR: {action} {SERVICE_NAME} (exit {r.returncode})"))
-        if r.stderr:
-            CONSOLE.print(dim(r.stderr.strip()))
-        return False
-    # User-mode fallback: drive run.sh --bg / --stop
+    """Dispatch start/stop/restart/status to the active runtime impl."""
+    rt = _current_runtime()
     if action == "start":
-        r = _run([str(REPO_ROOT / "run.sh"), "--bg"], check=False, capture=True)
+        ok, msg = rt.start()
     elif action == "stop":
-        r = _run([str(REPO_ROOT / "run.sh"), "--stop"], check=False, capture=True)
+        ok, msg = rt.stop()
     elif action == "restart":
-        _run([str(REPO_ROOT / "run.sh"), "--stop"], check=False)
+        ok1, m1 = rt.stop()
         time.sleep(1)
-        r = _run([str(REPO_ROOT / "run.sh"), "--bg"], check=False, capture=True)
+        ok2, m2 = rt.start()
+        ok = ok1 and ok2
+        msg = f"{m1}; {m2}"
     elif action == "status":
-        r = _run([str(REPO_ROOT / "run.sh"), "--status"], check=False, capture=True)
+        ok, msg = rt.status()
     else:
-        r = _run(["true"], capture=True)
-    CONSOLE.print((r.stdout or "").strip())
-    return r.returncode == 0
+        ok, msg = False, f"unknown action: {action}"
+    CONSOLE.print((_c('green', 'OK') if ok else _c('red', 'ERR')) + f": {msg}")
+    return ok
 
 
 def is_service_active() -> bool:
-    if has_systemctl():
-        r = _run(["systemctl", "is-active", SERVICE_NAME], check=False, capture=True)
-        return r.stdout.strip() == "active"
-    # User-mode: pidfile-based heuristic
-    pidfile = DATA_DIR / "run.pid"
-    if not pidfile.exists():
-        return False
-    try:
-        pid = int(pidfile.read_text().strip())
-    except ValueError:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    rt = _current_runtime()
+    ok, _ = rt.status()
+    return ok
 
 
 def http_health(url: str) -> tuple[bool, str]:
@@ -292,43 +284,33 @@ def cmd_status(args) -> int:
     host, port = _resolve_listen()
     url = f"http://{host if host not in ('0.0.0.0',) else '127.0.0.1'}:{port}"
 
+    rt = _current_runtime()
+    running, msg = rt.status()
+
     table = Table(box=box.SIMPLE, show_header=False)
     table.add_column(style="bold", width=18)
     table.add_column()
     table.add_row("Repo", str(REPO_ROOT))
-    table.add_row("Service", SERVICE_NAME)
     table.add_row("Listen", f"{host}:{port}")
     table.add_row("URL", url)
     table.add_row("Platform", f"{platform.system().lower()} (root={'yes' if os.geteuid() == 0 else 'no'})")
-    table.add_row("systemctl", "yes" if has_systemctl() else "no")
-    table.add_row("Service active", green("yes") if is_service_active() else yellow("no"))
-    ok, msg = http_health(f"{url}/health")
-    table.add_row("/health", green(msg) if ok else red(msg))
-    ok2, msg2 = http_health(f"{url}/v1/models")
-    table.add_row("/v1/models", green(msg2) if ok2 else red(msg2))
+    table.add_row("Mode", cyan(rt.info.label))
+    if rt.info.session and rt.info.session != rt.info.label:
+        table.add_row("Session", rt.info.session)
+    table.add_row("Service", green(msg) if running else yellow(msg))
+    ok, http_msg = http_health(f"{url}/health")
+    table.add_row("/health", green(http_msg) if ok else red(http_msg))
+    ok2, http_msg2 = http_health(f"{url}/v1/models")
+    table.add_row("/v1/models", green(http_msg2) if ok2 else red(http_msg2))
     CONSOLE.print(table)
-    return 0 if (ok or ok2 or is_service_active()) else 1
+    return 0 if (ok or ok2 or running) else 1
 
 
 def cmd_logs(args) -> int:
     section("Atlas proxy — logs")
-    if has_systemctl():
-        CONSOLE.print(dim(f"  journalctl -u {SERVICE_NAME} -f  (Ctrl-C to exit)"))
-        try:
-            subprocess.run(["journalctl", "-u", SERVICE_NAME, "-f", "--no-pager"], check=False)
-        except KeyboardInterrupt:
-            CONSOLE.print()
-        return 0
-    # User-mode: tail the file
-    if not PROXY_LOG_FILE.exists():
-        CONSOLE.print(yellow(f"No log file yet: {PROXY_LOG_FILE}"))
-        return 1
-    CONSOLE.print(dim(f"  tail -f {PROXY_LOG_FILE}  (Ctrl-C to exit)"))
-    try:
-        subprocess.run(["tail", "-n", "40", "-f", str(PROXY_LOG_FILE)], check=False)
-    except KeyboardInterrupt:
-        CONSOLE.print()
-    return 0
+    rt = _current_runtime()
+    CONSOLE.print(dim(f"  mode: {rt.info.label}"))
+    return rt.logs(follow=True)
 
 
 def _check_item(name: str, ok: bool, detail: str = "") -> bool:
@@ -355,16 +337,10 @@ def cmd_doctor(args) -> int:
         all_ok &= _check_item("deps importable", r.returncode == 0,
                               r.stderr.strip() if r.returncode else "fastapi/uvicorn/httpx/orjson")
 
-    # Service / process
-    if has_systemctl():
-        r = _run(["systemctl", "is-active", SERVICE_NAME], check=False, capture=True)
-        all_ok &= _check_item(f"{SERVICE_NAME} active",
-                              r.stdout.strip() == "active",
-                              r.stdout.strip() or "inactive")
-    else:
-        all_ok &= _check_item("proxy process",
-                              is_service_active(),
-                              "pidfile check")
+    # Service / process — use the active runtime
+    rt = _current_runtime()
+    running, run_msg = rt.status()
+    all_ok &= _check_item(f"runtime={rt.info.label}", running, run_msg)
 
     # HTTP
     host, port = _resolve_listen()
