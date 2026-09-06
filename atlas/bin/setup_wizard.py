@@ -534,7 +534,6 @@ def _configure_claude(base_url: str, dummy_key: str) -> tuple[bool, str]:
     """
     home = Path(os.path.expanduser("~"))
     settings = home / ".claude" / "settings.json"
-    backup = _backup(settings)
     existing = _read_json(settings)
     merged = _deep_merge(existing, {
         "env": {
@@ -544,8 +543,6 @@ def _configure_claude(base_url: str, dummy_key: str) -> tuple[bool, str]:
     })
     _write_json(settings, merged)
     msg = f"wrote {settings} (env.ANTHROPIC_BASE_URL + env.ANTHROPIC_AUTH_TOKEN)"
-    if backup:
-        msg += f" [backup: {backup.name}]"
     return True, msg
 
 
@@ -1189,14 +1186,6 @@ def run_wizard(dry_run: bool = False) -> int:
         CONSOLE.print(_g("✓ Existing key file detected — skipping key setup"))
 
     # ---- 5. Configure harness ----
-    base_url = _proxy_listen_url()
-    dummy_key = "sk-atlas-dummy"  # proxy accepts any value; real keys are server-side
-    if dry_run:
-        CONSOLE.print(_dim(f"[configure] dry-run — would write {harness.label} config"))
-    else:
-        ok, msg = harness.configure(base_url, dummy_key)
-        CONSOLE.print(_check(ok, f"Configured {harness.label}: {msg}"))
-
     # ---- Finalize Claude Code installation ----
     if harness.id == "claude" and claude_install_state is not None:
         with Live(
@@ -1211,30 +1200,49 @@ def run_wizard(dry_run: bool = False) -> int:
             )
 
             if harness_ready:
-                live.update(_g("✓ Claude Code fully installed and verified"))
+                live.update(
+                    _g("✓ Claude Code fully installed and verified")
+                )
             else:
-                live.update(_r("✗ Claude Code installation failed"))
+                live.update(
+                    _r("✗ Claude Code installation failed")
+                )
 
-    # Configure Claude ONLY after installation has completed and passed
-    # executable verification.
-    if harness.id == "claude" and harness_ready:
-        base_url = _proxy_base_url()
-        dummy_key = "atlas"
+    # Configure ONLY after the harness is confirmed installed.
+    if harness_ready:
+        base_url = _proxy_listen_url()
+        dummy_key = "sk-atlas-dummy"
 
-        try:
-            harness.configure(base_url, dummy_key)
+        if dry_run:
             CONSOLE.print(
-                _g("✓ Claude Code configured for Atlas")
+                _dim(
+                    f"[configure] dry-run — would write "
+                    f"{harness.label} config"
+                )
             )
-        except Exception as exc:
-            CONSOLE.print(
-                _r(f"✗ Claude Code configuration failed: {exc}")
-            )
-
-    elif harness.id == "claude" and not harness_ready:
+        else:
+            try:
+                ok, msg = harness.configure(
+                    base_url,
+                    dummy_key,
+                )
+                CONSOLE.print(
+                    _check(
+                        ok,
+                        f"Configured {harness.label}: {msg}",
+                    )
+                )
+            except Exception as exc:
+                CONSOLE.print(
+                    _r(
+                        f"✗ Failed to configure "
+                        f"{harness.label}: {exc}"
+                    )
+                )
+    else:
         CONSOLE.print(
             _y(
-                "⚠ Claude Code is not fully installed — "
+                f"⚠ {harness.label} is not fully installed — "
                 "configuration skipped"
             )
         )
