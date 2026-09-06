@@ -337,11 +337,24 @@ def _slug(label: str) -> str:
 
 
 def _do_restart() -> None:
-    """Restart the proxy to pick up the new model."""
-    from atlas.bin.atlas import service_action
-    service_action("stop")
-    time.sleep(1)
-    service_action("start")
+    """Restart the proxy to pick up the new model.
+
+    Calls `atlas2 stop` then `atlas2 start` via subprocess.  This avoids
+    trying to re-import the atlas CLI (which lives at `atlas/bin/atlas`
+    with no .py extension and would re-run its bootstrap).
+    """
+    import subprocess
+    for cmd in (["atlas2", "stop"], ["atlas2", "start"]):
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            CONSOLE.print(f"[red]{' '.join(cmd)} failed (exit {result.returncode}):[/red]")
+            if result.stdout:
+                CONSOLE.print(result.stdout)
+            if result.stderr:
+                CONSOLE.print(result.stderr)
+            return
+        if result.stdout:
+            CONSOLE.print(result.stdout, end="")
 
 
 def cmd_switch(args) -> int:
