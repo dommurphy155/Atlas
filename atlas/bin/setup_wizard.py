@@ -252,14 +252,52 @@ def _install_claude_code() -> bool:
 
     Source: https://code.claude.com/docs/en/setup (canonical install command).
     Idempotent: re-running is fast if already installed.
+
+    Common gotcha: `npm install -g` puts `claude` into the npm prefix's
+    `bin/` dir, which is often NOT on a fresh Ubuntu user's PATH. We
+    detect the actual install location and surface a clear warning if
+    the binary landed somewhere that won't be found by `claude` later.
     """
     if shutil.which("npm") is None:
         return False
+
     r = subprocess.run(
         ["npm", "install", "-g", "@anthropic-ai/claude-code"],
         capture_output=True, text=True, timeout=300,
     )
-    return r.returncode == 0 and shutil.which("claude") is not None
+    if r.returncode != 0:
+        # Surface npm's actual error in the installer's own log so the
+        # operator doesn't have to re-run with --verbose.
+        stderr_tail = (r.stderr or "").strip().splitlines()[-5:]
+        for line in stderr_tail:
+            CONSOLE.print(f"  [npm] {line}")
+        return False
+
+    # npm -g succeeded — now find where claude actually landed.
+    # shutil.which checks PATH; npm prefix may be outside it.
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        # Try the npm global prefix bin/ dir.
+        prefix = subprocess.run(
+            ["npm", "config", "get", "prefix"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if prefix:
+            candidate = Path(prefix) / "bin" / "claude"
+            if candidate.exists():
+                claude_path = str(candidate)
+                # npm global bin not on PATH — warn the operator clearly.
+                bin_dir = str(candidate.parent)
+                CONSOLE.print(
+                    f"  [yellow]⚠ claude installed at {claude_path}[/yellow]"
+                )
+                CONSOLE.print(
+                    f"  [yellow]  but {bin_dir} is not on your PATH.[/yellow]"
+                )
+                CONSOLE.print(
+                    f"  [yellow]  add it:  export PATH=\"{bin_dir}:$PATH\"[/yellow]"
+                )
+    return claude_path is not None
 
 
 def _install_codex() -> bool:
@@ -863,8 +901,30 @@ def _keys_already_present() -> bool:
 # Proxy health
 # ===========================================================================
 def _proxy_listen_url() -> str:
+    """Resolve the actual proxy URL.
+
+    Priority:
+      1. ``data/bound_port`` — written by the running proxy with the
+         port it actually bound to (honors port-collision fallback).
+      2. ``LISTEN_PORT`` env var (matches ``proxy.config`` default).
+      3. The fork's default (8777, NOT prod's 8788).
+    """
     host = os.environ.get("LISTEN_HOST", "0.0.0.0")
-    port = int(os.environ.get("LISTEN_PORT", "8788"))
+    port: int | None = None
+    try:
+        bp = REPO_ROOT / "data" / "bound_port"
+        if bp.exists():
+            v = int(bp.read_text().strip())
+            if 1 <= v <= 65535:
+                port = v
+    except (ValueError, OSError):
+        pass
+    if port is None:
+        env_port = os.environ.get("LISTEN_PORT")
+        if env_port and env_port.isdigit():
+            port = int(env_port)
+    if port is None:
+        port = 8777  # fork default; prod lives on 8788
     return f"http://{'127.0.0.1' if host in ('0.0.0.0',) else host}:{port}"
 
 
