@@ -861,7 +861,7 @@ async def messages(request: Request) -> Response:
     # still goes through proxy.forward (one-shot, no in-flight concerns).
     if not has_messages and stream:
         return await _stream_openai_to_anthropic(
-            rid, "POST", upstream_url, payload, extra
+            proxy, rid, "POST", upstream_url, payload, extra
         )
 
     resp = await proxy.forward(
@@ -890,6 +890,7 @@ async def messages(request: Request) -> Response:
 
 
 async def _stream_openai_to_anthropic(
+    proxy: ProxyCore,
     rid: str,
     method: str,
     upstream_url: str,
@@ -905,10 +906,9 @@ async def _stream_openai_to_anthropic(
       chunks are re-assembled before translation)
     - keepalives + connection cleanup are handled by the shared path
     """
-    from .proxy import proxy as _proxy_singleton  # late import: avoid circular
-    key, key_idx, is_healthy = await _proxy_singleton.pool.next_key_locked()
+    key, key_idx, is_healthy = await proxy.pool.next_key_locked()
     if not is_healthy:
-        s = _proxy_singleton.pool.stats()
+        s = proxy.pool.stats()
         log.warning(
             "req=%s all keys unhealthy (healthy=%d cooling=%d suspended=%d) — fast-failing with 503",
             rid, s["healthy"], s["cooling"], s["suspended"],
@@ -924,9 +924,9 @@ async def _stream_openai_to_anthropic(
             },
             headers={"x-request-id": rid},
         )
-    key_str = _proxy_singleton.pool.get_key_string(key_idx) or ""
-    headers = _proxy_singleton._headers(key_str, extra_headers)
-    iter_or_response = await _proxy_singleton.iter_upstream_sse(
+    key_str = proxy.pool.get_key_string(key_idx) or ""
+    headers = proxy._headers(key_str, extra_headers)
+    iter_or_response = await proxy.iter_upstream_sse(
         method, upstream_url, headers, payload, key_idx, rid,
     )
 
