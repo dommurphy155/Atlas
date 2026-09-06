@@ -358,6 +358,12 @@ RETRY_STATUSES: frozenset[int] = frozenset(
 STREAM_FIRST_BYTE_TIMEOUT: float = _env_float("STREAM_FIRST_BYTE_TIMEOUT", 20.0)
 PROXY_KEEPALIVE_SECONDS: float = _env_float("ATLAS_PROXY_KEEPALIVE_SECONDS", 15.0)
 
+# Max request body size in bytes. 10 MiB matches typical Anthropic/OpenAI
+# request caps. Set to 0 to disable. The guard rejects before the body is
+# buffered in memory (cheap to check from Content-Length; the streaming
+# case is caught by a hard cap on the read).
+MAX_REQUEST_BODY_BYTES: int = _env_int("ATLAS_PROXY_MAX_REQUEST_BODY_BYTES", 10 * 1024 * 1024)
+
 # Max concurrent streams toward free-tier models (Nvidia worker limit is ~32).
 # Stay under this to avoid mid-stream ResourceExhausted.
 FREE_MODEL_MAX_CONCURRENT: int = _env_int("FREE_MODEL_MAX_CONCURRENT", 25)
@@ -400,7 +406,7 @@ so Claude Code triggers /compact at the right threshold (~85%)."""
 # ---------------------------------------------------------------------------
 # Non-streaming response size cap
 # ---------------------------------------------------------------------------
-MAX_RESPONSE_BYTES: int = _env_int("ATLAS_MAX_RESPONSE_BYTES", _env_int("MAX_RESPONSE_BYTES", 0))
+MAX_RESPONSE_BYTES: int = _env_int("ATLAS_MAX_RESPONSE_BYTES", _env_int("MAX_RESPONSE_BYTES", 50 * 1024 * 1024))
 """Maximum response body size (bytes). 0 = unlimited. When set, non-streaming
 responses exceeding this size trigger a 413 instead of full buffering.
 Set to ~50MB to cap worst-case memory under MAX_CONNECTIONS=200."""
@@ -734,6 +740,8 @@ __all__ = [
     "MAX_RETRIES", "RETRY_STATUSES", "STREAM_FIRST_BYTE_TIMEOUT",
     "PROXY_KEEPALIVE_SECONDS", "FREE_MODEL_MAX_CONCURRENT",
     "MAX_CONCURRENT_PER_KEY", "STICKY_MAX_USES",
+    # Request body size cap
+    "MAX_REQUEST_BODY_BYTES",
     # Context window safety
         "MAX_INPUT_TOKENS", "MAX_TOKEN_TRIM_KEEP_SYSTEM", "MODEL_CONTEXT_WINDOW",
     # Response size cap

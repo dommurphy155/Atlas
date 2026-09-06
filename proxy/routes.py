@@ -27,10 +27,48 @@ from .proxy import ProxyCore
 from .translation import prepare_chat_body, prepare_messages_body, openai_response_to_anthropic, openai_sse_to_anthropic_sse
 from .utils import dumps, loads, request_id, ws_request_id
 from . import prettylog as pl
+from .config import MAX_REQUEST_BODY_BYTES
 
 log = get_logger(__name__)
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Request body size guard
+# ---------------------------------------------------------------------------
+async def _read_body_capped(request: Request) -> bytes:
+    """Read the request body, enforcing MAX_REQUEST_BODY_BYTES.
+
+    Fast path: reject upfront if the Content-Length header is over the cap
+    (saves a memory-blow-up from a 1 GiB upload attempt). For chunked
+    uploads without Content-Length, stream the body up to the cap.
+    """
+    if MAX_REQUEST_BODY_BYTES <= 0:
+        return await request.body()
+    cl = request.headers.get("content-length")
+    if cl is not None:
+        try:
+            cl_int = int(cl)
+        except ValueError:
+            # Malformed Content-Length — fall through to streaming-cap path
+            cl_int = -1
+        if cl_int > MAX_REQUEST_BODY_BYTES:
+            raise ValueError(
+                f"request body too large ({cl} bytes > {MAX_REQUEST_BODY_BYTES} max)"
+            )
+        if cl_int >= 0:
+            # Content-Length within limit; safe to read whole body
+            return await request.body()
+    # No Content-Length: stream with a hard cap to prevent unbounded reads
+    buf = bytearray()
+    async for chunk in request.stream():
+        if len(buf) + len(chunk) > MAX_REQUEST_BODY_BYTES:
+            raise ValueError(
+                f"request body too large (>{MAX_REQUEST_BODY_BYTES} bytes while streaming)"
+            )
+        buf.extend(chunk)
+    return bytes(buf)
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +271,15 @@ async def responses_api(request: Request) -> Response:
     assert proxy is not None
     rid = request_id(request)
     try:
-        body = loads(await request.body())
+        body = loads(await _read_body_capped(request))
+    except ValueError as e:
+        # Body too large OR malformed Content-Length caught by the cap.
+        # Return 413 so clients know to back off (not 400 "invalid json").
+        return JSONResponse(
+            {"error": {"message": str(e), "type": "request_too_large"}},
+            status_code=413,
+            headers={"x-request-id": rid},
+        )
     except Exception:
         return JSONResponse(
             {"error": {"message": "invalid json", "type": "invalid_request_error"}},
@@ -676,7 +722,15 @@ async def chat_completions(request: Request) -> Response:
     assert proxy is not None
     rid = request_id(request)
     try:
-        body = loads(await request.body())
+        body = loads(await _read_body_capped(request))
+    except ValueError as e:
+        # Body too large OR malformed Content-Length caught by the cap.
+        # Return 413 so clients know to back off (not 400 "invalid json").
+        return JSONResponse(
+            {"error": {"message": str(e), "type": "request_too_large"}},
+            status_code=413,
+            headers={"x-request-id": rid},
+        )
     except Exception:
         return JSONResponse(
             {
@@ -748,7 +802,15 @@ async def messages(request: Request) -> Response:
     assert proxy is not None
     rid = request_id(request)
     try:
-        body = loads(await request.body())
+        body = loads(await _read_body_capped(request))
+    except ValueError as e:
+        # Body too large OR malformed Content-Length caught by the cap.
+        # Return 413 so clients know to back off (not 400 "invalid json").
+        return JSONResponse(
+            {"error": {"message": str(e), "type": "request_too_large"}},
+            status_code=413,
+            headers={"x-request-id": rid},
+        )
     except Exception:
         return JSONResponse(
             {
