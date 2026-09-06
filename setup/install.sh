@@ -99,12 +99,23 @@ can_drive_systemd_system() {
 # Returns 0 if healthy, non-zero otherwise. Bounded so the installer does
 # not sit around for minutes when the proxy fails to come up.
 #
-# Port resolution: this fork defaults to 8777 (prod lives on 8788).
-# We read LISTEN_PORT from the repo's proxy/config.py so we always check
-# the right port, never prod's. Falls back to 8777.
+# Port resolution order (highest priority first):
+#   1. data/bound_port — written by the running proxy with the port it
+#      actually bound to. Honors the port-collision fallback at runtime.
+#   2. proxy.config.LISTEN_PORT — the configured default (fork: 8777,
+#      NOT prod's 8788).
+#   3. 8777 — fork's compiled-in default.
 # ---------------------------------------------------------------------------
 HEALTH_PORT=8777
-if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+# (1) bound_port file (runtime truth — what the proxy actually bound to)
+if [[ -f "$REPO_ROOT/data/bound_port" ]]; then
+    _resolved_port="$(cat "$REPO_ROOT/data/bound_port" 2>/dev/null || true)"
+    if [[ "$_resolved_port" =~ ^[0-9]+$ ]] && (( _resolved_port >= 1 && _resolved_port <= 65535 )); then
+        HEALTH_PORT="$_resolved_port"
+    fi
+fi
+# (2) proxy.config.LISTEN_PORT (only if bound_port wasn't set)
+if [[ "$HEALTH_PORT" == "8777" ]] && [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
     _resolved_port="$("$REPO_ROOT/.venv/bin/python" - <<PY 2>/dev/null || true
 import os, sys
 sys.path.insert(0, "$REPO_ROOT")
@@ -118,7 +129,7 @@ PY
     if [[ "$_resolved_port" =~ ^[0-9]+$ ]]; then
         HEALTH_PORT="$_resolved_port"
     fi
-elif command -v "$PY_BIN" >/dev/null 2>&1; then
+elif [[ "$HEALTH_PORT" == "8777" ]] && command -v "$PY_BIN" >/dev/null 2>&1; then
     _resolved_port="$("$PY_BIN" - <<PY 2>/dev/null || true
 import os, sys
 sys.path.insert(0, "$REPO_ROOT")

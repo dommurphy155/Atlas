@@ -259,8 +259,62 @@ app.add_middleware(
 app.include_router(routes.router)
 
 
+def _pick_port(preferred: int) -> int:
+    """Return ``preferred`` if it's free; otherwise pick a random free
+    TCP port in the high range. NEVER touches the existing occupant —
+    we don't own whatever process is on ``preferred`` so we just yield.
+    """
+    import socket
+
+    def _free(p: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("0.0.0.0", p))
+                return True
+            except OSError:
+                return False
+
+    if _free(preferred):
+        return preferred
+
+    # Try a handful of random high ports. Using random makes us unlikely
+    # to collide with other atlas forks doing the same dance on the same
+    # host, but the loop guarantees we land on something free.
+    import random
+    for _ in range(50):
+        candidate = random.randint(49152, 65535)
+        if _free(candidate):
+            return candidate
+
+    # Last resort: ask the OS for any free port (kernel-assigned).
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("0.0.0.0", 0))
+        return s.getsockname()[1]
+
+
 def main() -> None:
     import uvicorn
+
+    # If our preferred port is occupied by something else (e.g. another
+    # atlas install, prod, or a stale dev process), pick a random free
+    # one instead of killing the occupant. The chosen port is written
+    # to data/bound_port so the installer's health check and `atlas
+    # status` know where to find us, since LISTEN_PORT in config may
+    # not match the actual bind port.
+    chosen_port = _pick_port(LISTEN_PORT)
+    if chosen_port != LISTEN_PORT:
+        import logging
+        logging.getLogger("proxy").warning(
+            "LISTEN_PORT %d is occupied; falling back to %d (occupant untouched)",
+            LISTEN_PORT, chosen_port,
+        )
+    try:
+        from pathlib import Path as _P
+        _bound = _P(__file__).resolve().parent.parent / "data" / "bound_port"
+        _bound.parent.mkdir(parents=True, exist_ok=True)
+        _bound.write_text(str(chosen_port))
+    except OSError:
+        pass
 
     # Pass the app object, not "proxy.main:app" — the string form makes uvicorn
     # re-import this module while __main__ already ran it, double-executing all
@@ -268,7 +322,7 @@ def main() -> None:
     uvicorn.run(
         app,
         host=LISTEN_HOST,
-        port=LISTEN_PORT,
+        port=chosen_port,
         log_level=LOG_LEVEL.lower(),
         loop="uvloop" if "uvloop" in sys.modules else "asyncio",
         http="httptools",

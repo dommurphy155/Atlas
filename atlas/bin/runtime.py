@@ -822,19 +822,33 @@ HEALTH_POLL_S = 0.25
 
 
 def _health_url(repo_root: Path) -> str:
-    """Resolve the actual proxy port for this repo from its config.
+    """Resolve the actual proxy port for this repo.
 
-    Reads LISTEN_PORT from `proxy/config.py` if the venv is importable,
-    otherwise falls back to the fork default (8777). Avoids the prod port
-    (8788) which is owned by a different atlas install.
+    Priority:
+      1. ``data/bound_port`` — written by the running proxy with the port
+         it actually bound to. Honors port-collision fallback at runtime.
+      2. ``proxy.config.LISTEN_PORT`` — the configured default (fork: 8777,
+         NOT prod's 8788).
+      3. The fork's compiled-in default.
     """
-    port = HEALTH_PORT_DEFAULT
-    try:
-        sys.path.insert(0, str(repo_root))
-        from proxy.config import LISTEN_PORT  # type: ignore
-        port = int(LISTEN_PORT)
-    except Exception:
-        pass
+    port: int | None = None
+    bp = repo_root / "data" / "bound_port"
+    if bp.exists():
+        try:
+            v = int(bp.read_text().strip())
+            if 1 <= v <= 65535:
+                port = v
+        except (ValueError, OSError):
+            pass
+    if port is None:
+        try:
+            sys.path.insert(0, str(repo_root))
+            from proxy.config import LISTEN_PORT  # type: ignore
+            port = int(LISTEN_PORT)
+        except Exception:
+            pass
+    if port is None:
+        port = HEALTH_PORT_DEFAULT
     return f"http://127.0.0.1:{port}/health"
 
 
