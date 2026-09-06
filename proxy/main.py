@@ -25,15 +25,16 @@ from .config import (
     LISTEN_HOST,
     LISTEN_PORT,
     LOG_LEVEL,
-    PROVIDER,
-    HF_MODEL,
-    HF_KEY_FILE,
-    OPENROUTER_MODEL,
     SYSTEM_PROMPT_OVERRIDE_FILE,
+    get_default_model,
     get_force_default_model,
     reload_system_prompt_override,
     migrate_hf_active_keys,
     log,
+)
+from .providers import (
+    ProviderCapability,
+    get_active_provider,
 )
 from .keypool import KeyPool, load_keys
 from .proxy import ProxyCore
@@ -54,17 +55,16 @@ except ImportError:
 
 
 def _load_provider_keys() -> list[str]:
-    """Load keys from the provider-appropriate file.
+    """Load keys from the active provider's key file.
 
-    For HuggingFace, loads hf_keys.txt directly. Dead keys are never in
-    the active file because retire_and_remove_hf_key() removes them on
-    retirement, and migrate_hf_active_keys() cleans up any orphans at
-    startup. For OpenRouter, returns keys from KEY_FILE unchanged
-    (preserving existing behaviour).
+    For HuggingFace, loads ``hf_keys.txt`` directly. Dead keys are
+    never in the active file because ``retire_and_remove_hf_key()``
+    removes them on retirement, and ``migrate_hf_active_keys()`` cleans
+    up any orphans at startup. For OpenRouter, returns keys from
+    ``KEY_FILE`` unchanged (preserving existing behaviour).
     """
-    if PROVIDER == "huggingface":
-        return load_keys(HF_KEY_FILE)
-    return load_keys(KEY_FILE)
+    provider = get_active_provider()
+    return load_keys(provider.key_file)
 
 
 # Public alias retained for the test-suite / external callers.
@@ -74,15 +74,16 @@ _load_active_keys = _load_provider_keys
 def _reload_keys_for_provider() -> list[str]:
     """Reload keys, respecting dead-key exclusion for HF and the
     OpenRouter fallback file when the primary is empty."""
-    if PROVIDER == "huggingface":
+    provider = get_active_provider()
+    if provider.has(ProviderCapability.HF_QUOTA_BODY_MARKERS):
         return _load_provider_keys()
-    # OpenRouter: use fallback if primary is empty (existing behaviour)
-    keys = load_keys(KEY_FILE)
+    # OpenRouter-style provider: use fallback if primary is empty
+    keys = load_keys(provider.key_file)
     if not keys:
         keys = load_keys(FALLBACK_KEY_FILE)
         if keys:
             log.warning(
-                "Primary keys file missing – using fallback %s (%d keys)",
+                "Primary keys file missing -- using fallback %s (%d keys)",
                 FALLBACK_KEY_FILE,
                 len(keys),
             )
@@ -91,8 +92,10 @@ def _reload_keys_for_provider() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    provider = get_active_provider()
+
     # --- Startup migration: clean dead keys from HF active file ---
-    if PROVIDER == "huggingface":
+    if provider.has(ProviderCapability.HF_QUOTA_BODY_MARKERS):
         removed, kept = migrate_hf_active_keys()
         log.info("HF key migration: removed %d dead keys, kept %d active", removed, kept)
 
@@ -111,36 +114,43 @@ async def lifespan(app: FastAPI):
             f.write("\n".join(lines) + "\n")
         os.replace(tmp, _key_file)
     except FileNotFoundError:
-        pass  # no key file yet — pool starts empty and hot-reloads
+        pass  # no key file yet -- pool starts empty and hot-reloads
     except Exception as e:
         log.warning("key-file shuffle failed (non-fatal): %s", e)
 
     keys = _reload_keys_for_provider()
 
+    log.info(
+        "Loaded %d %s keys (mode=%s)",
+        len(keys),
+        provider.name,
+        provider.pool_mode.value,
+    )
+
     if not keys:
         log.warning(
-            "No keys found yet. Expected file: %s (one sk-or-… key per line). "
+            "No keys found yet. Expected file: %s. "
             "Proxy will start and auto-load keys as they become available.",
-            HF_KEY_FILE if PROVIDER == "huggingface" else KEY_FILE,
+            provider.key_file or KEY_FILE,
         )
         keys = []  # Start with empty pool, will be populated
 
-    pool_mode = "full_sticky" if PROVIDER == "huggingface" else "partial_sticky"
-    log.info("Loaded %d %s keys (mode=%s)", len(keys), PROVIDER, pool_mode)
-    pool = KeyPool(keys, mode=pool_mode) if keys else KeyPool([], mode=pool_mode)
+    pool = KeyPool(keys, mode=provider.pool_mode.value) if keys else KeyPool(
+        [], mode=provider.pool_mode.value
+    )
 
-    # For OpenRouter, preserve existing fallback behavior
-    if PROVIDER != "huggingface" and not keys:
+    # For OpenRouter-style providers, preserve the fallback behaviour
+    if not provider.has(ProviderCapability.HF_QUOTA_BODY_MARKERS) and not keys:
         fallback_keys = load_keys(FALLBACK_KEY_FILE)
         if fallback_keys:
             log.warning(
-                "Primary keys file missing – using fallback %s (%d keys)",
+                "Primary keys file missing -- using fallback %s (%d keys)",
                 FALLBACK_KEY_FILE,
                 len(fallback_keys),
             )
             pool = KeyPool(fallback_keys)
 
-    core = ProxyCore(pool, provider=PROVIDER)
+    core = ProxyCore(pool, provider=provider.name)
 
     # Start background key reloader
     reload_task = asyncio.create_task(_reload_keys_periodically(pool))
@@ -154,8 +164,8 @@ async def lifespan(app: FastAPI):
         LISTEN_PORT,
         pool.stats()["total"],
         pool.stats()["healthy"],
-        PROVIDER,
-        HF_MODEL if PROVIDER == "huggingface" else OPENROUTER_MODEL,
+        provider.name,
+        get_default_model(),
         get_force_default_model(),
     )
     yield
@@ -192,10 +202,7 @@ async def _reload_keys_periodically(pool: KeyPool) -> None:
                     reload_system_prompt_override()
 
             # Provider-specific key file
-            if PROVIDER == "huggingface":
-                key_file_path = HF_KEY_FILE
-            else:
-                key_file_path = KEY_FILE
+            key_file_path = get_active_provider().key_file
 
             key_file = Path(key_file_path)
             if not key_file.exists():

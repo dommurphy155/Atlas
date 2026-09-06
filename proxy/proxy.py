@@ -32,12 +32,15 @@ from .config import (
     UPSTREAM_TITLE,
     WRITE_TIMEOUT,
     get_default_model,
-    is_hf_rate_limit_error,
-    is_hf_key_invalid,
     retire_and_remove_hf_key,
     get_logger,
 )
 from .keypool import KeyPool
+from .providers import Provider, ProviderCapability, get_active_provider, get_provider
+
+# The capability flag that indicates a provider uses HF-style quota body
+# markers (and therefore needs key retirement on the relevant 4xx codes).
+_HF_QUOTA_CAP = ProviderCapability.HF_QUOTA_BODY_MARKERS
 from .utils import dumps, loads
 from .streaming_sse import is_openai_done_frame
 from . import prettylog as pl
@@ -101,9 +104,34 @@ from .streaming_sse import (
 
 
 class ProxyCore:
-    def __init__(self, pool: KeyPool, provider: str = "openrouter") -> None:
+    def __init__(
+        self,
+        pool: KeyPool,
+        provider: Optional[Provider] = None,
+    ) -> None:
+        """Initialise the proxy with a KeyPool and a Provider record.
+
+        ``provider`` defaults to the active provider at construction
+        time.  Pass an explicit ``Provider`` (e.g. for tests) to
+        override.
+
+        Back-compat: ``provider`` may also be the legacy string name
+        (``"openrouter"`` / ``"huggingface"``); we resolve it to a
+        Provider record in that case so older call sites keep working.
+        """
+        if provider is None:
+            provider = get_active_provider()
+        elif isinstance(provider, str):
+            resolved = get_provider(provider)
+            if resolved is None:
+                raise ValueError(
+                    f"Unknown provider: {provider!r}. "
+                    f"Known providers: {list(get_provider.__globals__['_Registry']._providers.keys())}"
+                )
+            provider = resolved
         self.pool = pool
-        self.provider = provider
+        self.provider: Provider = provider
+        self.provider_name: str = provider.name
         self.client: Optional[httpx.AsyncClient] = None
         self._prewarm_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
@@ -225,7 +253,7 @@ class ProxyCore:
         concurrency). Pre-stream callers pass ``frame_kind=None`` to retire
         on either of the two body-classification conditions.
         """
-        if self.provider != "huggingface":
+        if not self.provider.has(_HF_QUOTA_CAP):
             return False
         if frame_kind is not None:
             # Mid-stream path — only retire on the kinds the proxy trusts.
@@ -234,7 +262,10 @@ class ProxyCore:
             retire = True
         else:
             # Pre-stream path — inspect the body for known HF error shapes.
-            if not (is_hf_rate_limit_error(status, body) or is_hf_key_invalid(status, body)):
+            if not (
+                self.provider.check_quota(status, body)
+                or self.provider.check_key_dead(status, body)
+            ):
                 return False
             retire = True
         key_str = self.pool.get_key_string(key_idx)
@@ -317,12 +348,12 @@ class ProxyCore:
                     # retires that key, so we must also retry here and allow
                     # next_key() to select the replacement key.
                     stream_hf_key_failure = False
-                    if self.provider == "huggingface" and result.status_code >= 400:
+                    if self.provider.has(_HF_QUOTA_CAP) and result.status_code >= 400:
                         try:
                             error_body = bytes(result.body)
                             stream_hf_key_failure = (
-                                is_hf_rate_limit_error(result.status_code, error_body)
-                                or is_hf_key_invalid(result.status_code, error_body)
+                                self.provider.check_quota(result.status_code, error_body)
+                                or self.provider.check_key_dead(result.status_code, error_body)
                             )
                         except Exception:
                             stream_hf_key_failure = False
@@ -539,7 +570,7 @@ class ProxyCore:
             await self.pool.mark_error(key_idx, status)
             # Check for HF permanent retirement conditions (non-streaming pre-response)
             pl.trace(request_id).upstream(key_idx, status)  # logging-only
-            if self.provider == "huggingface":
+            if self.provider.has(_HF_QUOTA_CAP):
                 data = await upstream.aread()
                 await self._maybe_retire_hf_key(
                     key_idx, status, data, request_id,

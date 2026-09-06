@@ -175,7 +175,9 @@ async def test_iter_upstream_sse_marks_key_on_midstream_rate_limit(monkeypatch) 
     real_pc.pool = pool
     real_pc.client = pc.client
     real_pc._free_sem = pc._free_sem
-    real_pc.provider = "huggingface"
+    from proxy.providers import get_provider
+    real_pc.provider = get_provider("huggingface")
+    real_pc.provider_name = real_pc.provider.name
 
     result = await real_pc.iter_upstream_sse(
         "POST",

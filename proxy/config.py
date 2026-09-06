@@ -86,65 +86,50 @@ HF_DEAD_KEYS_FILE: str = _env(
 # ---------------------------------------------------------------------------
 # Provider registry
 # ---------------------------------------------------------------------------
-@dataclass(frozen=True)
-class ProviderConfig:
-    """Immutable per-provider configuration.
-
-    Centralises base URL, key prefix, default model, and key file paths so
-    that provider-specific logic lives in one place instead of scattered
-    ``if PROVIDER == "huggingface"`` checks throughout the codebase.
-    """
-    name: str
-    base_url: str
-    key_prefix: str
-    default_model: str
-    key_file: str
-    dead_keys_file: str
-    key_label: str
-    chat_path: str = "/chat/completions"
-    models_path: str = "/models"
-
-    @property
-    def chat_url(self) -> str:
-        return f"{self.base_url}{self.chat_path}"
-
-    @property
-    def models_url(self) -> str:
-        return f"{self.base_url}{self.models_path}"
-
-
-# OpenRouter provider
-OPENROUTER_BASE_URL: str = _env(
-    "ATLAS_OPENROUTER_BASE_URL",
-    _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-)
-OPENROUTER_CHAT: str = f"{OPENROUTER_BASE_URL}/chat/completions"
-OPENROUTER_MESSAGES: str = f"{OPENROUTER_BASE_URL}/messages"
-OPENROUTER_MODELS: str = f"{OPENROUTER_BASE_URL}/models"
-HF_BASE_URL: str = _env("ATLAS_HF_BASE_URL", "https://router.huggingface.co/v1")
-HF_KEY_PREFIX: str = "hf_"
-
-OPENROUTER_CONFIG = ProviderConfig(
-    name="openrouter",
-    base_url=OPENROUTER_BASE_URL,
-    key_prefix="sk-",
-    default_model=_env("ATLAS_OPENROUTER_MODEL", _env("OPENROUTER_MODEL", "z-ai/glm-5.2:free")),
-    key_file=KEY_FILE,
-    dead_keys_file=FALLBACK_KEY_FILE,
-    key_label="OpenRouter",
+#
+# The Provider class and the registry live in `proxy.providers`. This block
+# just registers the two built-in providers (OpenRouter, HuggingFace) and
+# keeps the historical `OPENROUTER_CONFIG` / `HF_CONFIG` / `PROVIDERS` names
+# available as back-compat shims. New code should import Provider, etc.,
+# directly from `proxy.providers`.
+from .providers import (
+    Provider,
+    ProviderCapability,
+    PoolMode,
+    register_provider,
+    get_provider,
+    get_active_provider,
+    list_providers,
+    provider_labels,
+    resolve_provider_name,
+    set_active_provider_name as _set_active_provider_name,
+    _is_hf_quota as _provider_is_hf_quota,
+    _is_hf_key_dead as _provider_is_hf_key_dead,
 )
 
-HF_CONFIG = ProviderConfig(
-    name="huggingface",
-    base_url=HF_BASE_URL,
-    key_prefix=HF_KEY_PREFIX,
-    default_model=_env("ATLAS_HF_MODEL", "deepseek-ai/DeepSeek-V4-Flash:deepinfra"),
-    key_file=HF_KEY_FILE,
-    dead_keys_file=HF_DEAD_KEYS_FILE,
-    key_label="HuggingFace",
-)
+# Register the built-in providers. Tests or deployments can call
+# ``register_provider(...)`` with allow_override=True to swap either out
+# before any key pools are built.
+from .providers import _build_openrouter, _build_huggingface  # noqa: E402
 
-PROVIDERS: dict[str, ProviderConfig] = {
+OPENROUTER_CONFIG: Provider = _build_openrouter()
+# Backfill key file paths from the env vars loaded above.
+OPENROUTER_CONFIG = Provider(
+    **{**OPENROUTER_CONFIG.__dict__,
+       "key_file": KEY_FILE,
+       "fallback_key_file": FALLBACK_KEY_FILE}
+)
+register_provider(OPENROUTER_CONFIG, allow_override=True)
+
+HF_CONFIG: Provider = _build_huggingface()
+HF_CONFIG = Provider(
+    **{**HF_CONFIG.__dict__,
+       "key_file": HF_KEY_FILE,
+       "dead_keys_file": HF_DEAD_KEYS_FILE}
+)
+register_provider(HF_CONFIG, allow_override=True)
+
+PROVIDERS: dict[str, Provider] = {
     "openrouter": OPENROUTER_CONFIG,
     "huggingface": HF_CONFIG,
 }
@@ -211,12 +196,28 @@ def _load_runtime_model() -> Optional[str]:
     return None
 
 
-PROVIDER: str = _load_runtime_provider()
-"""Active provider: ``openrouter`` (default) or ``huggingface``.
+# Backwards-compatible base URL constants. New code should use
+# ``get_active_provider().chat_url`` / ``messages_url`` / ``models_url``.
+OPENROUTER_BASE_URL: str = OPENROUTER_CONFIG.base_url
+OPENROUTER_CHAT: str = OPENROUTER_CONFIG.chat_url
+OPENROUTER_MESSAGES: str = OPENROUTER_CONFIG.messages_url
+OPENROUTER_MODELS: str = OPENROUTER_CONFIG.models_url
+HF_BASE_URL: str = HF_CONFIG.base_url
+HF_KEY_PREFIX: str = HF_CONFIG.key_prefix
+HF_DEFAULT_MODEL: str = HF_CONFIG.default_model
+
+# Active provider: read at import time from the runtime config file written
+# by the Atlas CLI. ``proxy.providers.set_active_provider_name`` makes this
+# available to any code that asks ``get_active_provider()``.
+_set_active_provider_name(_load_runtime_provider())
+PROVIDER: str = _load_runtime_provider()  # back-compat: legacy string name
+"""Active provider canonical name: ``openrouter`` (default) or ``huggingface``.
 
 Determined at import time from the runtime config file written by the
-Atlas CLI.  ``get_provider()`` / ``get_provider_config()`` are the
-preferred accessors at call sites."""
+Atlas CLI.  ``get_active_provider()`` is the preferred accessor at call
+sites -- it returns the full ``Provider`` record (URLs, capabilities,
+auth scheme, error hooks) instead of just the name string.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +262,7 @@ Takes precedence over the global flag when this env var is explicitly set."""
 def get_force_default_model() -> bool:
     """Return the force-override flag for the *active* provider.
 
-    Single entry point for all override logic — resolves the correct
+    Single entry point for all override logic -- resolves the correct
     per-provider flag while preserving backwards compatibility for
     deployments that only set the global ``FORCE_DEFAULT_MODEL``.
     """
@@ -271,50 +272,48 @@ def get_force_default_model() -> bool:
 
 
 def get_provider() -> str:
-    """Return the active provider: ``openrouter`` or ``huggingface``."""
+    """Return the active provider's canonical name.
+
+    Prefer ``get_active_provider()`` from ``proxy.providers`` if you
+    want the full ``Provider`` record instead of just the name.
+    """
     return PROVIDER
 
 
-def get_provider_config(name: Optional[str] = None) -> ProviderConfig:
-    """Return the ``ProviderConfig`` for *name* (defaults to active provider)."""
+def get_provider_config(name: Optional[str] = None) -> Provider:
+    """Return the ``Provider`` for *name* (defaults to the active one)."""
     if name is None:
-        name = PROVIDER
-    return PROVIDERS.get(name, OPENROUTER_CONFIG)
+        return get_active_provider()
+    p = get_provider(name)
+    return p if p is not None else get_active_provider()
 
 
 def get_chat_url() -> str:
     """Upstream chat/completions URL for the active provider."""
-    if PROVIDER == "huggingface":
-        return HF_CONFIG.chat_url
-    return OPENROUTER_CHAT
+    return get_active_provider().chat_url
 
 
 def get_messages_url() -> str:
     """Upstream messages URL for the active provider."""
-    if PROVIDER == "huggingface":
-        return HF_CONFIG.chat_url
-    return OPENROUTER_MESSAGES
+    return get_active_provider().messages_url
 
 
 def get_models_url() -> str:
     """Upstream models URL for the active provider."""
-    if PROVIDER == "huggingface":
-        return HF_CONFIG.models_url
-    return OPENROUTER_MODELS
+    return get_active_provider().models_url
 
 
 def get_default_model() -> str:
-    """Default model for the active provider."""
-    if PROVIDER == "huggingface":
-        return HF_MODEL
-    return OPENROUTER_MODEL
+    """Default model for the active provider (with runtime override applied)."""
+    override = _load_runtime_model()
+    if override:
+        return override
+    return get_active_provider().default_model
 
 
 def get_key_file() -> str:
     """Key file path for the active provider."""
-    if PROVIDER == "huggingface":
-        return HF_KEY_FILE
-    return KEY_FILE
+    return get_active_provider().key_file
 
 
 def get_fallback_key_file() -> str:
@@ -324,9 +323,7 @@ def get_fallback_key_file() -> str:
 
 def get_key_prefix() -> str:
     """Key prefix for the active provider."""
-    if PROVIDER == "huggingface":
-        return HF_KEY_PREFIX
-    return "sk-"
+    return get_active_provider().key_prefix
 
 
 # ---------------------------------------------------------------------------
@@ -656,71 +653,24 @@ def migrate_hf_active_keys() -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 # Error classification
 # ---------------------------------------------------------------------------
+# The provider-specific hooks (HF quota body markers, HF dead-key body
+# markers) live in `proxy.providers`. These thin shims keep the old
+# `is_hf_rate_limit_error` / `is_hf_key_invalid` names available for
+# callers that imported them from `proxy.config` historically. New code
+# should call `provider.check_quota(...)` / `provider.check_key_dead(...)`
+# on the active provider.
 def is_hf_rate_limit_error(status: int, body: Optional[bytes] = None) -> bool:
-    """Determine whether an HF upstream response indicates a definitive
-    rate-limit / quota / credit exhaustion that warrants permanent key
-    retirement.
-
-    Triggers on:
-      - HTTP 429 (standard rate limit)
-      - HTTP 402 (Payment Required — HF quota/credit exhaustion)
-      - HF-specific quota/credit markers in the response body
-
-    Does NOT trigger on:
-      - 400 (malformed request)
-      - 401/403 (unless body specifically indicates invalid/exhausted credential)
-      - 404 (unsupported model)
-      - 500/502/503/504 (transient server errors)
-    """
-    if status in (429, 402):
-        return True
-    if body:
-        try:
-            text = body.decode("utf-8", errors="ignore").lower()
-            hf_quota_markers = (
-                "rate limit reached",
-                "quota exceeded",
-                "credit balance is insufficient",
-                "insufficient credits",
-                "credits exhausted",
-                "usage limit reached",
-                "rate_limited",
-            )
-            return any(m in text for m in hf_quota_markers)
-        except Exception:
-            pass
-    return False
+    """Back-compat shim -- delegates to ``HF_CONFIG.check_quota``."""
+    return HF_CONFIG.check_quota(status, body)
 
 
 def is_hf_key_invalid(status: int, body: Optional[bytes] = None) -> bool:
-    """Determine whether an HF response indicates the key itself is
-    permanently invalid (not just rate-limited).
-
-    - 401 with 'invalid'/'unauthorized' in body
-    - 403 with 'invalid-api-key'/'revoked' markers
-
-    Does NOT trigger on generic 403 (which may mean access-denied for a
-    model, not an exhausted key).
-    """
-    if status == 401 and body:
-        try:
-            text = body.decode("utf-8", errors="ignore").lower()
-            if "invalid" in text or "unauthorized" in text:
-                return True
-        except Exception:
-            pass
-    if status == 403 and body:
-        try:
-            text = body.decode("utf-8", errors="ignore").lower()
-            if "invalid-api-key" in text or "revoked" in text:
-                return True
-        except Exception:
-            pass
-    return False
+    """Back-compat shim -- delegates to ``HF_CONFIG.check_key_dead``."""
+    return HF_CONFIG.check_key_dead(status, body)
 
 
 # ---------------------------------------------------------------------------
-# Backwards-compat aliases — proxy.py historically imported HF-specific names
+# Backwards-compat aliases -- proxy.py historically imported HF-specific names
 # ---------------------------------------------------------------------------
 is_rate_limit_error = is_hf_rate_limit_error
 is_key_invalid = is_hf_key_invalid

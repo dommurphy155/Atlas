@@ -160,16 +160,37 @@ def status_mark(status: int) -> Tuple[str, str]:
     return "✗", "bad"
 
 
-_PROVIDER_SHORT = {
+# Short names for client protocols (NOT upstream providers) -- these
+# identify the shape of the *incoming* request, not the upstream.
+_PROVIDER_SHORT: dict[str, str] = {
     "openai": "OPENAI",
     "anthropic": "ANTHROPIC",
-    "huggingface": "HF",
-    "openrouter": "OPENROUTER",
 }
 
 
 def provider_tag(provider: str) -> str:
-    return _PROVIDER_SHORT.get((provider or "").lower(), (provider or "?").upper())
+    """Return the short display label for a provider.
+
+    Client-protocol names (``openai``, ``anthropic``) get static
+    short labels above. Upstream provider names fall through to the
+    registry, which yields the label registered for that provider
+    (e.g. ``OpenRouter`` -> ``OPENROUTER``, ``HuggingFace`` -> ``HF``).
+    Unknown values get uppercased as a last resort.
+    """
+    if not provider:
+        return "?"
+    key = provider.lower()
+    if key in _PROVIDER_SHORT:
+        return _PROVIDER_SHORT[key]
+    # Try the registry for upstream providers
+    try:
+        from .providers import resolve_provider_name
+        canonical = resolve_provider_name(provider)
+        if canonical is not None:
+            return canonical.upper()
+    except Exception:
+        pass
+    return provider.upper()
 
 
 def short_rid(rid: str) -> str:

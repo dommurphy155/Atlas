@@ -16,13 +16,13 @@ from .config import (
     MAX_RETRIES,
     MODEL_CONTEXT_WINDOW,
     PAYLOAD_DIR,
-    PROVIDER,
     SAVE_PAYLOAD_FILES,
     get_chat_url,
     get_messages_url,
     get_default_model,
     get_logger,
 )
+from .providers import Provider, ProviderCapability, get_active_provider
 from .proxy import ProxyCore
 from .translation import prepare_chat_body, prepare_messages_body, openai_response_to_anthropic, openai_sse_to_anthropic_sse
 from .utils import dumps, loads, request_id, ws_request_id
@@ -252,7 +252,7 @@ async def models(request: Request) -> Response:
                 "id": default_model,
                 "object": "model",
                 "created": now,
-                "owned_by": "openrouter" if PROVIDER != "huggingface" else "huggingface",
+                "owned_by": get_active_provider().name,
                 "display_name": default_model,
                 "type": "model",
                 "context_window": MODEL_CONTEXT_WINDOW,
@@ -835,7 +835,9 @@ async def messages(request: Request) -> Response:
             headers={"x-request-id": rid},
         )
 
-    body = prepare_messages_body(body) if PROVIDER != "huggingface" else prepare_chat_body(body)
+    provider = get_active_provider()
+    has_messages = provider.has(ProviderCapability.MESSAGES_ENDPOINT)
+    body = prepare_messages_body(body) if has_messages else prepare_chat_body(body)
     stream = bool(body.get("stream", False))
     payload = dumps(body)
 
@@ -852,12 +854,12 @@ async def messages(request: Request) -> Response:
     if "anthropic-beta" in request.headers:
         extra["anthropic-beta"] = request.headers["anthropic-beta"]
 
-    upstream_url = get_chat_url() if PROVIDER == "huggingface" else get_messages_url()
+    upstream_url = provider.chat_url if not has_messages else provider.messages_url
 
-    # HF streaming: open the upstream via iter_upstream_sse so mid-stream
+    # HF-style streaming: open the upstream via iter_upstream_sse so mid-stream
     # provider errors classify + mark the key. The non-streaming path
     # still goes through proxy.forward (one-shot, no in-flight concerns).
-    if PROVIDER == "huggingface" and stream:
+    if not has_messages and stream:
         return await _stream_openai_to_anthropic(
             rid, "POST", upstream_url, payload, extra
         )
@@ -871,8 +873,8 @@ async def messages(request: Request) -> Response:
         request_id=rid,
     )
 
-    # HF non-streaming: convert OpenAI response → Anthropic /messages shape
-    if PROVIDER == "huggingface" and isinstance(resp, Response):
+    # HF-style non-streaming: convert OpenAI response -> Anthropic /messages shape
+    if not has_messages and isinstance(resp, Response):
         openai_data = loads(resp.body)
         anthropic_data = openai_response_to_anthropic(openai_data, rid=rid)
         new_body = dumps(anthropic_data)
