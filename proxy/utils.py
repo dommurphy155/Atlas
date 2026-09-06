@@ -1,4 +1,10 @@
-"""JSON helpers, request IDs, and miscellaneous utilities."""
+"""JSON helpers, request IDs, and miscellaneous utilities.
+
+Note: SSE frame classification and DONE detection live in
+`proxy.streaming_sse` (extracted in Round 3). They were previously here
+but moved to break the proxy.py / utils.py cross-module coupling that
+the architecture review flagged.
+"""
 
 from __future__ import annotations
 
@@ -33,20 +39,3 @@ def ws_request_id(ws: WebSocket) -> str:
         or ws.headers.get("x-client-request-id")
         or uuid.uuid4().hex[:16]
     )
-
-
-def is_openai_done_frame(frame: bytes) -> bool:
-    """True for OpenAI-style end markers that break some Anthropic clients."""
-    text = frame.replace(b"\r\n", b"\n").strip()
-    if not text:
-        return True
-    for line in text.split(b"\n"):
-        line = line.strip()
-        if line.startswith(b"data:"):
-            payload = line[5:].strip()
-            if payload == b"[DONE]":
-                return True
-        if line == b"event: data":
-            if b"[DONE]" in text:
-                return True
-    return False
