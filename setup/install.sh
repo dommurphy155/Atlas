@@ -568,62 +568,67 @@ install_runtime() {
 # verification fails, clean up and move on. The first one that passes
 # becomes RUNTIME_MODE. If everything fails we fall through to manual
 # so the installer still completes successfully.
+#
+# Delegates to the Python `bin.runtime.install_runtime` so both this
+# shell installer and `atlas install` (which routes through
+# setup_wizard) share one runtime-selection code path. The wizard's
+# interactive UX is preserved when invoked through `atlas install`;
+# this shell entrypoint remains a non-interactive fallback for ops
+# who just want the runtime installed.
 # ---------------------------------------------------------------------------
+_runtime_python() {
+    local py="$REPO_ROOT/.venv/bin/python"
+    if [[ ! -x "$py" ]]; then
+        py="$PY_BIN"
+    fi
+    [[ -x "$(command -v "$py" 2>/dev/null)" ]] || {
+        warn "no python interpreter available for runtime install"
+        return 127
+    }
+    printf '%s\n' "$py"
+}
+
 try_runtime_with_fallback() {
     local requested="${1:-auto}"
-    local last_reason=""
-    local mode
-
-    # Build the ordered candidate list for this host. Re-uses
-    # has_systemctl_*/has_tmux/has_nohup so we never pick a runtime that
-    # detection already proved is not available.
-    local -a candidates=()
-    if [[ "$requested" == "user" ]]; then
-        if has_systemctl_user; then candidates+=("systemd-user"); fi
-        if has_tmux;           then candidates+=("tmux");           fi
-        if has_nohup;          then candidates+=("nohup");          fi
-    else
-        # System systemd is preferred when actually usable — either root
-        # directly, or a non-root user with sudo available. We don't gate
-        # on sudo -n here: per TASK spec, an interactive sudo prompt is
-        # acceptable for privileged operations.
-        if has_systemctl_system && can_drive_systemd_system; then candidates+=("systemd");      fi
-        if has_systemctl_user;                                  then candidates+=("systemd-user"); fi
-        if has_tmux;                                            then candidates+=("tmux");         fi
-        if has_nohup;                                           then candidates+=("nohup");        fi
-    fi
-
-    # If nothing was detected we still finish in manual mode.
-    if (( ${#candidates[@]} == 0 )); then
+    local py
+    py="$(_runtime_python)" || {
         RUNTIME_MODE="manual"
-        RUNTIME_REASON="no auto-launch runtime available"
+        RUNTIME_REASON="no python interpreter for runtime install"
+        return 0
+    }
+
+    # Drive the same runtime-selection logic the wizard uses. Stdout
+    # is human-readable progress (relayed as-is), the final line is
+    # "RUNTIME_RESULT=<mode>|<reason>" so we can parse the outcome.
+    local output result_line mode reason
+    output="$("$py" - "$REPO_ROOT" "$SERVICE_NAME" <<'PY' 2>&1
+import os, sys
+sys.path.insert(0, os.path.join(sys.argv[1], "atlas"))
+from bin import runtime as _rt
+from pathlib import Path
+
+repo = Path(sys.argv[1])
+service = sys.argv[2]
+venv_py = repo / ".venv" / "bin" / "python"
+
+mode, ok, msg = _rt.install_runtime(repo, venv_py, service)
+print(f"RUNTIME_RESULT={mode}|{msg}")
+PY
+)"
+    result_line="$(printf '%s\n' "$output" | grep -E '^RUNTIME_RESULT=' | tail -n1 || true)"
+    # Relay non-result lines as installer progress.
+    printf '%s\n' "$output" | grep -v -E '^RUNTIME_RESULT=' | sed -E 's/^/  /'
+
+    if [[ -z "$result_line" ]]; then
+        RUNTIME_MODE="manual"
+        RUNTIME_REASON="runtime install crashed"
+        warn "Python runtime installer produced no result line — see logs"
         return 0
     fi
 
-    for mode in "${candidates[@]}"; do
-        bold "Trying runtime: $mode"
-        RUNTIME_MODE="$mode"
-        if install_runtime; then
-            # The install_* helpers do their own progress reporting.
-            # Now verify the proxy is actually responding.
-            if check_health; then
-                RUNTIME_REASON="$mode verified via health endpoint"
-                return 0
-            fi
-            last_reason="$mode failed health check"
-            warn "$last_reason — cleaning up and trying next"
-            cleanup_runtime "$mode"
-            continue
-        fi
-        last_reason="$mode install/start failed"
-        warn "$last_reason — trying next"
-        cleanup_runtime "$mode"
-    done
-
-    # All candidates failed — fall through to manual so the installer
-    # itself completes. The operator can still launch the proxy by hand.
-    RUNTIME_MODE="manual"
-    RUNTIME_REASON="$last_reason; no runtime worked"
+    local body="${result_line#RUNTIME_RESULT=}"
+    RUNTIME_MODE="${body%%|*}"
+    RUNTIME_REASON="${body#*|}"
     return 0
 }
 
