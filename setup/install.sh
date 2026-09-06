@@ -712,23 +712,37 @@ do_install() {
     info "user: $(id -un) (euid=${EUID:-?})"
     [[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN — no changes will be made"
 
+    # Bash bootstrap: data dirs, venv, .env. The runtime install + every
+    # step after this point is delegated to the Python wizard so the user
+    # gets the clean interactive setup (same code path as `atlas install`).
     ensure_dirs
     ensure_venv
     ensure_dotenv
 
-    try_runtime_with_fallback "$requested"
-    bold "Runtime: $RUNTIME_MODE"
-    info "  reason: $RUNTIME_REASON"
-    if [[ "$RUNTIME_MODE" == "manual" ]]; then
-        warn "no automatic runtime manager available"
-        info "Manual start:"
-        info "  cd $REPO_ROOT && ./.venv/bin/python -m proxy.main"
-        info "  (or: $REPO_ROOT/run.sh)"
+    local atlas_py="$REPO_ROOT/atlas/bin/atlas"
+    if [[ ! -x "$atlas_py" ]]; then
+        fail "atlas CLI not found at $atlas_py"
     fi
 
-    install_cli_binary
-    ok "install complete"
-    info "  next: $BIN_NAME status"
+    local py="$REPO_ROOT/.venv/bin/python"
+    [[ -x "$py" ]] || py="$PY_BIN"
+
+    local -a flags=("install")
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        flags+=("--dry-run")
+    fi
+    # The wizard auto-picks the best runtime and reads
+    # ATLAS_SERVICE_NAME / ATLAS_BIN_NAME from the env (set at the top of
+    # this script) so the shell installer and the Python wizard agree on
+    # unit name + CLI symlink target. Note: the wizard does not currently
+    # support a forced user-mode flag — it picks the best available mode.
+    "$py" "$atlas_py" "${flags[@]}"
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        warn "wizard exited with code $rc — install may be incomplete"
+    fi
+    # Echo a final line so callers parsing our output have a marker.
+    echo "INSTALL_RC=$rc"
 }
 
 do_uninstall() {
