@@ -1,0 +1,4273 @@
+[
+  {
+    "id": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+    "name": "DeepSeek-V4-Flash-Vision-Exp",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a951c32379de35b0d189f6e",
+      "id": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+      "likes": 735,
+      "trendingScore": 647,
+      "private": false,
+      "downloads": 209191,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v4",
+        "text-generation",
+        "image-text-to-text",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "8-bit",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-08-31T06:16:18.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.8-27B",
+    "name": "Qwen3.8-27B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a72f2e302294c7d32dd278e",
+      "id": "Qwen/Qwen3.8-27B",
+      "likes": 14115,
+      "trendingScore": 536,
+      "private": false,
+      "downloads": 6190807,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5",
+        "image-text-to-text",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:azure",
+        "deploy:sagemaker",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-08-05T08:22:59.000Z",
+      "modelId": "Qwen/Qwen3.8-27B"
+    }
+  },
+  {
+    "id": "zai-org/GLM-5.3-Flash",
+    "name": "GLM-5.3-Flash",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a8d39822a943ad8a2f2ea50",
+      "id": "zai-org/GLM-5.3-Flash",
+      "likes": 2096,
+      "trendingScore": 330,
+      "private": false,
+      "downloads": 761364,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm5_next",
+        "image-text-to-text",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2602.15763",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-08-25T06:43:14.000Z",
+      "modelId": "zai-org/GLM-5.3-Flash"
+    }
+  },
+  {
+    "id": "zai-org/GLM-5.3",
+    "name": "GLM-5.3",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a8d396a6f0233a6c0d8c4f2",
+      "id": "zai-org/GLM-5.3",
+      "likes": 1733,
+      "trendingScore": 298,
+      "private": false,
+      "downloads": 410074,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm_moe_dsa",
+        "text-generation",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2602.15763",
+        "license:other",
+        "eval-results",
+        "endpoints_compatible",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-08-25T06:42:50.000Z",
+      "modelId": "zai-org/GLM-5.3"
+    }
+  },
+  {
+    "id": "moonshotai/Kimi-K3",
+    "name": "Kimi-K3",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a2cfbf15c4b5ce712d08eb6",
+      "id": "moonshotai/Kimi-K3",
+      "likes": 11217,
+      "trendingScore": 79,
+      "private": false,
+      "downloads": 2460430,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "kimi_k3",
+        "feature-extraction",
+        "compressed-tensors",
+        "conversational",
+        "image-text-to-text",
+        "custom_code",
+        "license:other",
+        "eval-results",
+        "8-bit",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-06-13T06:42:57.000Z",
+      "modelId": "moonshotai/Kimi-K3"
+    }
+  },
+  {
+    "id": "inclusionAI/Ling-3.0-flash-Fin",
+    "name": "Ling-3.0-flash-Fin",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a990f31efab14e0b49e017e",
+      "id": "inclusionAI/Ling-3.0-flash-Fin",
+      "likes": 66,
+      "trendingScore": 65,
+      "private": false,
+      "downloads": 390,
+      "tags": [
+        "safetensors",
+        "bailing_hybrid",
+        "finance",
+        "financial-research",
+        "agents",
+        "tool-use",
+        "long-context",
+        "mixture-of-experts",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "base_model:inclusionAI/Ling-3.0-flash",
+        "base_model:finetune:inclusionAI/Ling-3.0-flash",
+        "license:mit",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "createdAt": "2026-09-03T06:09:53.000Z",
+      "modelId": "inclusionAI/Ling-3.0-flash-Fin"
+    }
+  },
+  {
+    "id": "meta-models/Muse-Glimmer-30B",
+    "name": "Muse-Glimmer-30B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a78be27e8cfa31c8b543588",
+      "id": "meta-models/Muse-Glimmer-30B",
+      "likes": 1856,
+      "trendingScore": 46,
+      "private": false,
+      "downloads": 648708,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "muse_glimmer",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:2504.13181",
+        "arxiv:2602.06036",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-08-09T17:51:35.000Z",
+      "modelId": "meta-models/Muse-Glimmer-30B"
+    }
+  },
+  {
+    "id": "meta-llama/Llama-3.1-8B-Instruct",
+    "name": "Llama-3.1-8B-Instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6698d8a0653e4babe21e1e7d",
+      "id": "meta-llama/Llama-3.1-8B-Instruct",
+      "likes": 6806,
+      "trendingScore": 44,
+      "private": false,
+      "downloads": 5630085,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "llama",
+        "text-generation",
+        "facebook",
+        "meta",
+        "pytorch",
+        "llama-3",
+        "conversational",
+        "en",
+        "de",
+        "fr",
+        "it",
+        "pt",
+        "hi",
+        "es",
+        "th",
+        "arxiv:2204.05149",
+        "base_model:meta-llama/Llama-3.1-8B",
+        "base_model:finetune:meta-llama/Llama-3.1-8B",
+        "license:llama3.1",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2024-07-18T08:56:00.000Z",
+      "modelId": "meta-llama/Llama-3.1-8B-Instruct"
+    }
+  },
+  {
+    "id": "google/gemma-4-31B-it",
+    "name": "gemma-4-31B-it",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69b1b2ec895b2d5026e6bc2e",
+      "id": "google/gemma-4-31B-it",
+      "likes": 3731,
+      "trendingScore": 41,
+      "private": false,
+      "downloads": 8283566,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gemma4",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:2607.02770",
+        "base_model:google/gemma-4-31B",
+        "base_model:finetune:google/gemma-4-31B",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-03-11T18:22:36.000Z",
+      "modelId": "google/gemma-4-31B-it"
+    }
+  },
+  {
+    "id": "hexgrad/Kokoro-82M",
+    "name": "Kokoro-82M",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "676ca1388118866906abbd7c",
+      "id": "hexgrad/Kokoro-82M",
+      "likes": 6822,
+      "trendingScore": 38,
+      "private": false,
+      "downloads": 11526411,
+      "tags": [
+        "text-to-speech",
+        "en",
+        "arxiv:2306.07691",
+        "arxiv:2203.02395",
+        "base_model:yl4579/StyleTTS2-LJSpeech",
+        "base_model:finetune:yl4579/StyleTTS2-LJSpeech",
+        "doi:10.57967/hf/4329",
+        "license:apache-2.0",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "createdAt": "2024-12-26T00:20:08.000Z",
+      "modelId": "hexgrad/Kokoro-82M"
+    }
+  },
+  {
+    "id": "openai/whisper-large-v3",
+    "name": "whisper-large-v3",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "654a84cadff2f49007ce6c37",
+      "id": "openai/whisper-large-v3",
+      "likes": 6244,
+      "trendingScore": 27,
+      "private": false,
+      "downloads": 5085131,
+      "tags": [
+        "transformers",
+        "pytorch",
+        "jax",
+        "safetensors",
+        "whisper",
+        "automatic-speech-recognition",
+        "audio",
+        "hf-asr-leaderboard",
+        "en",
+        "zh",
+        "de",
+        "es",
+        "ru",
+        "ko",
+        "fr",
+        "ja",
+        "pt",
+        "tr",
+        "pl",
+        "ca",
+        "nl",
+        "ar",
+        "sv",
+        "it",
+        "id",
+        "hi",
+        "fi",
+        "vi",
+        "he",
+        "uk",
+        "el",
+        "ms",
+        "cs",
+        "ro",
+        "da",
+        "hu",
+        "ta",
+        "no",
+        "th",
+        "ur",
+        "hr",
+        "bg",
+        "lt",
+        "la",
+        "mi",
+        "ml",
+        "cy",
+        "sk",
+        "te",
+        "fa",
+        "lv",
+        "bn",
+        "sr",
+        "az",
+        "sl",
+        "kn",
+        "et",
+        "mk",
+        "br",
+        "eu",
+        "is",
+        "hy",
+        "ne",
+        "mn",
+        "bs",
+        "kk",
+        "sq",
+        "sw",
+        "gl",
+        "mr",
+        "pa",
+        "si",
+        "km",
+        "sn",
+        "yo",
+        "so",
+        "af",
+        "oc",
+        "ka",
+        "be",
+        "tg",
+        "sd",
+        "gu",
+        "am",
+        "yi",
+        "lo",
+        "uz",
+        "fo",
+        "ht",
+        "ps",
+        "tk",
+        "nn",
+        "mt",
+        "sa",
+        "lb",
+        "my",
+        "bo",
+        "tl",
+        "mg",
+        "as",
+        "tt",
+        "haw",
+        "ln",
+        "ha",
+        "ba",
+        "jw",
+        "su",
+        "arxiv:2212.04356",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "automatic-speech-recognition",
+      "library_name": "transformers",
+      "createdAt": "2023-11-07T18:41:14.000Z",
+      "modelId": "openai/whisper-large-v3"
+    }
+  },
+  {
+    "id": "openai/gpt-oss-20b",
+    "name": "gpt-oss-20b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68913539bd3d0a833438591d",
+      "id": "openai/gpt-oss-20b",
+      "likes": 5001,
+      "trendingScore": 27,
+      "private": false,
+      "downloads": 6522380,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gpt_oss",
+        "text-generation",
+        "vllm",
+        "conversational",
+        "arxiv:2508.10925",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "8-bit",
+        "mxfp4",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-08-04T22:33:29.000Z",
+      "modelId": "openai/gpt-oss-20b"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.6-35B-A3B",
+    "name": "Qwen3.6-35B-A3B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69df2937a1a44a4df58e0dd5",
+      "id": "Qwen/Qwen3.6-35B-A3B",
+      "likes": 2780,
+      "trendingScore": 25,
+      "private": false,
+      "downloads": 4299521,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5_moe",
+        "image-text-to-text",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-04-15T05:59:19.000Z",
+      "modelId": "Qwen/Qwen3.6-35B-A3B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-ASR-1.7B",
+    "name": "Qwen3-ASR-1.7B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69798100a4e37b8a8fc8fc55",
+      "id": "Qwen/Qwen3-ASR-1.7B",
+      "likes": 1072,
+      "trendingScore": 22,
+      "private": false,
+      "downloads": 3519498,
+      "tags": [
+        "safetensors",
+        "qwen3_asr",
+        "automatic-speech-recognition",
+        "arxiv:2601.21337",
+        "license:apache-2.0",
+        "eval-results",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "automatic-speech-recognition",
+      "createdAt": "2026-01-28T03:22:40.000Z",
+      "modelId": "Qwen/Qwen3-ASR-1.7B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.8-2.4T-A95B",
+    "name": "Qwen3.8-2.4T-A95B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a768b7cf3f180fc4e95f56f",
+      "id": "Qwen/Qwen3.8-2.4T-A95B",
+      "likes": 1203,
+      "trendingScore": 19,
+      "private": false,
+      "downloads": 51714,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5_moe_text",
+        "text-generation",
+        "conversational",
+        "license:other",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-08-08T01:50:52.000Z",
+      "modelId": "Qwen/Qwen3.8-2.4T-A95B"
+    }
+  },
+  {
+    "id": "openai/whisper-large-v3-turbo",
+    "name": "whisper-large-v3-turbo",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "66fba7309482f97131bf08d6",
+      "id": "openai/whisper-large-v3-turbo",
+      "likes": 3297,
+      "trendingScore": 18,
+      "private": false,
+      "downloads": 6962558,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "whisper",
+        "automatic-speech-recognition",
+        "audio",
+        "en",
+        "zh",
+        "de",
+        "es",
+        "ru",
+        "ko",
+        "fr",
+        "ja",
+        "pt",
+        "tr",
+        "pl",
+        "ca",
+        "nl",
+        "ar",
+        "sv",
+        "it",
+        "id",
+        "hi",
+        "fi",
+        "vi",
+        "he",
+        "uk",
+        "el",
+        "ms",
+        "cs",
+        "ro",
+        "da",
+        "hu",
+        "ta",
+        "no",
+        "th",
+        "ur",
+        "hr",
+        "bg",
+        "lt",
+        "la",
+        "mi",
+        "ml",
+        "cy",
+        "sk",
+        "te",
+        "fa",
+        "lv",
+        "bn",
+        "sr",
+        "az",
+        "sl",
+        "kn",
+        "et",
+        "mk",
+        "br",
+        "eu",
+        "is",
+        "hy",
+        "ne",
+        "mn",
+        "bs",
+        "kk",
+        "sq",
+        "sw",
+        "gl",
+        "mr",
+        "pa",
+        "si",
+        "km",
+        "sn",
+        "yo",
+        "so",
+        "af",
+        "oc",
+        "ka",
+        "be",
+        "tg",
+        "sd",
+        "gu",
+        "am",
+        "yi",
+        "lo",
+        "uz",
+        "fo",
+        "ht",
+        "ps",
+        "tk",
+        "nn",
+        "mt",
+        "sa",
+        "lb",
+        "my",
+        "bo",
+        "tl",
+        "mg",
+        "as",
+        "tt",
+        "haw",
+        "ln",
+        "ha",
+        "ba",
+        "jw",
+        "su",
+        "arxiv:2212.04356",
+        "base_model:openai/whisper-large-v3",
+        "base_model:finetune:openai/whisper-large-v3",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "automatic-speech-recognition",
+      "library_name": "transformers",
+      "createdAt": "2024-10-01T07:39:28.000Z",
+      "modelId": "openai/whisper-large-v3-turbo"
+    }
+  },
+  {
+    "id": "google/gemma-4-26B-A4B-it",
+    "name": "gemma-4-26B-A4B-it",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69b1dde5d77b87bf05eff3f9",
+      "id": "google/gemma-4-26B-A4B-it",
+      "likes": 1481,
+      "trendingScore": 18,
+      "private": false,
+      "downloads": 8307671,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gemma4",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:2607.02770",
+        "base_model:google/gemma-4-26B-A4B",
+        "base_model:finetune:google/gemma-4-26B-A4B",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-03-11T21:25:57.000Z",
+      "modelId": "google/gemma-4-26B-A4B-it"
+    }
+  },
+  {
+    "id": "ibm-granite/granite-4.2-3b",
+    "name": "granite-4.2-3b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a760743a63bdfcbc1ed6110",
+      "id": "ibm-granite/granite-4.2-3b",
+      "likes": 77,
+      "trendingScore": 18,
+      "private": false,
+      "downloads": 19003,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "granite",
+        "text-generation",
+        "granite-4.2",
+        "reasoning",
+        "thinking",
+        "tool-calling",
+        "ibm",
+        "conversational",
+        "en",
+        "de",
+        "es",
+        "fr",
+        "ja",
+        "pt",
+        "ar",
+        "cs",
+        "it",
+        "ko",
+        "nl",
+        "zh",
+        "base_model:ibm-granite/granite-4.1-3b-base",
+        "base_model:finetune:ibm-granite/granite-4.1-3b-base",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-08-07T16:26:43.000Z",
+      "modelId": "ibm-granite/granite-4.2-3b"
+    }
+  },
+  {
+    "id": "openai/gpt-oss-120b",
+    "name": "gpt-oss-120b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68913522f16f3c8aaffccf1f",
+      "id": "openai/gpt-oss-120b",
+      "likes": 5161,
+      "trendingScore": 17,
+      "private": false,
+      "downloads": 5229370,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gpt_oss",
+        "text-generation",
+        "vllm",
+        "conversational",
+        "arxiv:2508.10925",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "8-bit",
+        "mxfp4",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-08-04T22:33:06.000Z",
+      "modelId": "openai/gpt-oss-120b"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.5-9B",
+    "name": "Qwen3.5-9B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69a194f2d29af86e5f085743",
+      "id": "Qwen/Qwen3.5-9B",
+      "likes": 1903,
+      "trendingScore": 16,
+      "private": false,
+      "downloads": 11772488,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5",
+        "image-text-to-text",
+        "conversational",
+        "base_model:Qwen/Qwen3.5-9B-Base",
+        "base_model:finetune:Qwen/Qwen3.5-9B-Base",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-02-27T12:58:26.000Z",
+      "modelId": "Qwen/Qwen3.5-9B"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V4-Flash",
+    "name": "DeepSeek-V4-Flash",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69e864e440a44c9fb7c54efc",
+      "id": "deepseek-ai/DeepSeek-V4-Flash",
+      "likes": 2183,
+      "trendingScore": 16,
+      "private": false,
+      "downloads": 1757120,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v4",
+        "text-generation",
+        "conversational",
+        "arxiv:2606.19348",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "8-bit",
+        "fp8",
+        "deploy:azure",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-04-22T06:04:20.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V4-Flash"
+    }
+  },
+  {
+    "id": "ibm-granite/granite-4.2-30b",
+    "name": "granite-4.2-30b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a7607fedf78dde1261b1d3b",
+      "id": "ibm-granite/granite-4.2-30b",
+      "likes": 109,
+      "trendingScore": 16,
+      "private": false,
+      "downloads": 9783,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "granite",
+        "text-generation",
+        "granite-4.2",
+        "reasoning",
+        "thinking",
+        "tool-calling",
+        "ibm",
+        "conversational",
+        "en",
+        "de",
+        "es",
+        "fr",
+        "ja",
+        "pt",
+        "ar",
+        "cs",
+        "it",
+        "ko",
+        "nl",
+        "zh",
+        "base_model:ibm-granite/granite-4.1-30b-base",
+        "base_model:finetune:ibm-granite/granite-4.1-30b-base",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-08-07T16:29:50.000Z",
+      "modelId": "ibm-granite/granite-4.2-30b"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V4-Pro",
+    "name": "DeepSeek-V4-Pro",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69e864fd6b68f7e6cfc63ca3",
+      "id": "deepseek-ai/DeepSeek-V4-Pro",
+      "likes": 5505,
+      "trendingScore": 15,
+      "private": false,
+      "downloads": 634620,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v4",
+        "text-generation",
+        "conversational",
+        "arxiv:2606.19348",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "8-bit",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-04-22T06:04:45.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V4-Pro"
+    }
+  },
+  {
+    "id": "inclusionAI/Ling-3.0-flash",
+    "name": "Ling-3.0-flash",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a6f6cf134c714cf6381ccb4",
+      "id": "inclusionAI/Ling-3.0-flash",
+      "likes": 397,
+      "trendingScore": 15,
+      "private": false,
+      "downloads": 18655,
+      "tags": [
+        "safetensors",
+        "bailing_hybrid",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "license:mit",
+        "eval-results",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "createdAt": "2026-08-02T16:14:41.000Z",
+      "modelId": "inclusionAI/Ling-3.0-flash"
+    }
+  },
+  {
+    "id": "thinkingmachines/Inkling-Small",
+    "name": "Inkling-Small",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a67dcc8207183934704404f",
+      "id": "thinkingmachines/Inkling-Small",
+      "likes": 401,
+      "trendingScore": 14,
+      "private": false,
+      "downloads": 287311,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "inkling_mm_model",
+        "image-text-to-text",
+        "conversational",
+        "audio-text-to-text",
+        "moe",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-07-27T22:33:44.000Z",
+      "modelId": "thinkingmachines/Inkling-Small"
+    }
+  },
+  {
+    "id": "ibm-granite/granite-4.2-8b",
+    "name": "granite-4.2-8b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a7607d5dbd3847a1b8d0b47",
+      "id": "ibm-granite/granite-4.2-8b",
+      "likes": 63,
+      "trendingScore": 12,
+      "private": false,
+      "downloads": 17294,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "granite",
+        "text-generation",
+        "granite-4.2",
+        "reasoning",
+        "thinking",
+        "tool-calling",
+        "ibm",
+        "conversational",
+        "en",
+        "de",
+        "es",
+        "fr",
+        "ja",
+        "pt",
+        "ar",
+        "cs",
+        "it",
+        "ko",
+        "nl",
+        "zh",
+        "base_model:ibm-granite/granite-4.1-8b-base",
+        "base_model:finetune:ibm-granite/granite-4.1-8b-base",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-08-07T16:29:09.000Z",
+      "modelId": "ibm-granite/granite-4.2-8b"
+    }
+  },
+  {
+    "id": "zai-org/GLM-5.2",
+    "name": "GLM-5.2",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a30fda88514bfa5f01a33b6",
+      "id": "zai-org/GLM-5.2",
+      "likes": 5075,
+      "trendingScore": 11,
+      "private": false,
+      "downloads": 997060,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm_moe_dsa",
+        "text-generation",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2602.15763",
+        "arxiv:2603.12201",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-06-16T07:39:20.000Z",
+      "modelId": "zai-org/GLM-5.2"
+    }
+  },
+  {
+    "id": "thinkingmachines/Inkling",
+    "name": "Inkling",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a563842cb785d0d06a1cb7d",
+      "id": "thinkingmachines/Inkling",
+      "likes": 1766,
+      "trendingScore": 11,
+      "private": false,
+      "downloads": 277251,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "inkling_mm_model",
+        "image-text-to-text",
+        "conversational",
+        "audio-text-to-text",
+        "moe",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-07-14T13:23:14.000Z",
+      "modelId": "thinkingmachines/Inkling"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+    "name": "DeepSeek-V4-Pro-0813",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a7d346291824bcb9cd27db7",
+      "id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+      "likes": 805,
+      "trendingScore": 11,
+      "private": false,
+      "downloads": 154525,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v4",
+        "text-generation",
+        "conversational",
+        "arxiv:2606.19348",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "8-bit",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-08-13T03:05:06.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V4-Pro-0813"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-Embedding-8B",
+    "name": "Qwen3-Embedding-8B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "683f090e77b41ac9fc98c51f",
+      "id": "Qwen/Qwen3-Embedding-8B",
+      "likes": 796,
+      "trendingScore": 9,
+      "private": false,
+      "downloads": 2200536,
+      "tags": [
+        "sentence-transformers",
+        "safetensors",
+        "qwen3",
+        "text-generation",
+        "transformers",
+        "sentence-similarity",
+        "feature-extraction",
+        "text-embeddings-inference",
+        "arxiv:2506.05176",
+        "base_model:Qwen/Qwen3-8B-Base",
+        "base_model:finetune:Qwen/Qwen3-8B-Base",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2025-06-03T14:39:10.000Z",
+      "modelId": "Qwen/Qwen3-Embedding-8B"
+    }
+  },
+  {
+    "id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+    "name": "nemotron-3.5-asr-streaming-0.6b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a07959985f5728e21682abd",
+      "id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+      "likes": 1080,
+      "trendingScore": 9,
+      "private": false,
+      "downloads": 941498,
+      "tags": [
+        "nemo",
+        "safetensors",
+        "gguf",
+        "nemotron3_5_asr",
+        "feature-extraction",
+        "transformers",
+        "speech-recognition",
+        "cache-aware ASR",
+        "automatic-speech-recognition",
+        "streaming-asr",
+        "multilingual",
+        "speech",
+        "audio",
+        "FastConformer",
+        "RNNT",
+        "Parakeet",
+        "ASR",
+        "pytorch",
+        "NeMo",
+        "en",
+        "es",
+        "de",
+        "fr",
+        "it",
+        "ar",
+        "ja",
+        "ko",
+        "pt",
+        "ru",
+        "hi",
+        "zh",
+        "vi",
+        "he",
+        "nl",
+        "cs",
+        "da",
+        "pl",
+        "no",
+        "sv",
+        "th",
+        "tr",
+        "bg",
+        "el",
+        "et",
+        "fi",
+        "hr",
+        "hu",
+        "lt",
+        "lv",
+        "ro",
+        "sk",
+        "uk",
+        "mt",
+        "sl",
+        "dataset:nvidia/Granary",
+        "dataset:multilingual_librispeech",
+        "dataset:fleurs",
+        "dataset:mozilla-foundation/common_voice_8_0",
+        "dataset:voxpopuli",
+        "dataset:europarl",
+        "arxiv:2312.17279",
+        "arxiv:2305.05084",
+        "license:other",
+        "model-index",
+        "eval-results",
+        "region:us"
+      ],
+      "pipeline_tag": "automatic-speech-recognition",
+      "library_name": "nemo",
+      "createdAt": "2026-05-15T21:52:25.000Z",
+      "modelId": "nvidia/nemotron-3.5-asr-streaming-0.6b"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-Embedding-0.6B",
+    "name": "Qwen3-Embedding-0.6B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "683f05dc98de733bf4c59f3d",
+      "id": "Qwen/Qwen3-Embedding-0.6B",
+      "likes": 1183,
+      "trendingScore": 8,
+      "private": false,
+      "downloads": 7157326,
+      "tags": [
+        "sentence-transformers",
+        "safetensors",
+        "qwen3",
+        "text-generation",
+        "transformers",
+        "sentence-similarity",
+        "feature-extraction",
+        "text-embeddings-inference",
+        "arxiv:2506.05176",
+        "base_model:Qwen/Qwen3-0.6B-Base",
+        "base_model:finetune:Qwen/Qwen3-0.6B-Base",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2025-06-03T14:25:32.000Z",
+      "modelId": "Qwen/Qwen3-Embedding-0.6B"
+    }
+  },
+  {
+    "id": "MiniMaxAI/MiniMax-M3",
+    "name": "MiniMax-M3",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a1e8b0b751d8eee461fd678",
+      "id": "MiniMaxAI/MiniMax-M3",
+      "likes": 1520,
+      "trendingScore": 8,
+      "private": false,
+      "downloads": 175846,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "minimax_m3_vl",
+        "image-text-to-text",
+        "multimodal",
+        "moe",
+        "agent",
+        "coding",
+        "video",
+        "conversational",
+        "custom_code",
+        "arxiv:2606.13392",
+        "license:other",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-06-02T07:49:31.000Z",
+      "modelId": "MiniMaxAI/MiniMax-M3"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-14B",
+    "name": "Qwen3-14B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "680da7b53a9818192728e751",
+      "id": "Qwen/Qwen3-14B",
+      "likes": 460,
+      "trendingScore": 7,
+      "private": false,
+      "downloads": 1734782,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3",
+        "text-generation",
+        "conversational",
+        "arxiv:2309.00071",
+        "arxiv:2505.09388",
+        "base_model:Qwen/Qwen3-14B-Base",
+        "base_model:finetune:Qwen/Qwen3-14B-Base",
+        "license:apache-2.0",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-04-27T03:42:45.000Z",
+      "modelId": "Qwen/Qwen3-14B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-ASR-0.6B",
+    "name": "Qwen3-ASR-0.6B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69797f5bff25f0257439fd24",
+      "id": "Qwen/Qwen3-ASR-0.6B",
+      "likes": 350,
+      "trendingScore": 7,
+      "private": false,
+      "downloads": 758520,
+      "tags": [
+        "safetensors",
+        "qwen3_asr",
+        "automatic-speech-recognition",
+        "arxiv:2601.21337",
+        "license:apache-2.0",
+        "eval-results",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "automatic-speech-recognition",
+      "createdAt": "2026-01-28T03:15:39.000Z",
+      "modelId": "Qwen/Qwen3-ASR-0.6B"
+    }
+  },
+  {
+    "id": "tencent/Hy3",
+    "name": "Hy3",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a46666a9df197cf7b7bed77",
+      "id": "tencent/Hy3",
+      "likes": 962,
+      "trendingScore": 7,
+      "private": false,
+      "downloads": 12256,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "hy_v3",
+        "text-generation",
+        "hunyuan",
+        "hy3",
+        "moe",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-07-02T13:23:54.000Z",
+      "modelId": "tencent/Hy3"
+    }
+  },
+  {
+    "id": "Audio8/Audio8-TTS-Preview-0.6b",
+    "name": "Audio8-TTS-Preview-0.6b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a685fdc9ffd69480d380b93",
+      "id": "Audio8/Audio8-TTS-Preview-0.6b",
+      "likes": 389,
+      "trendingScore": 7,
+      "private": false,
+      "downloads": 12664,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "arktts",
+        "feature-extraction",
+        "audio",
+        "text-to-speech",
+        "tts",
+        "voice-cloning",
+        "zero-shot",
+        "multilingual",
+        "custom_code",
+        "yue",
+        "zh",
+        "nl",
+        "en",
+        "fr",
+        "de",
+        "it",
+        "ja",
+        "ko",
+        "pl",
+        "es",
+        "license:apache-2.0",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "library_name": "transformers",
+      "createdAt": "2026-07-28T07:53:00.000Z",
+      "modelId": "Audio8/Audio8-TTS-Preview-0.6b"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-30B-A3B",
+    "name": "Qwen3-30B-A3B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "680da7c9aa6c98cb395660ac",
+      "id": "Qwen/Qwen3-30B-A3B",
+      "likes": 936,
+      "trendingScore": 6,
+      "private": false,
+      "downloads": 2147543,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_moe",
+        "text-generation",
+        "conversational",
+        "arxiv:2309.00071",
+        "arxiv:2505.09388",
+        "base_model:Qwen/Qwen3-30B-A3B-Base",
+        "base_model:finetune:Qwen/Qwen3-30B-A3B-Base",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-04-27T03:43:05.000Z",
+      "modelId": "Qwen/Qwen3-30B-A3B"
+    }
+  },
+  {
+    "id": "XiaomiMiMo/MiMo-V2.5",
+    "name": "MiMo-V2.5",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69ef66a2a4a9e4a05048320f",
+      "id": "XiaomiMiMo/MiMo-V2.5",
+      "likes": 414,
+      "trendingScore": 6,
+      "private": false,
+      "downloads": 323869,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "mimo_v2",
+        "text-generation",
+        "multimodal",
+        "vision-language",
+        "audio",
+        "agent",
+        "video-understanding",
+        "long-context",
+        "conversational",
+        "custom_code",
+        "en",
+        "zh",
+        "license:mit",
+        "eval-results",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-04-27T13:37:38.000Z",
+      "modelId": "XiaomiMiMo/MiMo-V2.5"
+    }
+  },
+  {
+    "id": "moonshotai/Kimi-K2.7-Code",
+    "name": "Kimi-K2.7-Code",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a2a691312d31e23df8c42f5",
+      "id": "moonshotai/Kimi-K2.7-Code",
+      "likes": 1381,
+      "trendingScore": 6,
+      "private": false,
+      "downloads": 215519,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "kimi_k25",
+        "feature-extraction",
+        "compressed-tensors",
+        "image-text-to-text",
+        "conversational",
+        "custom_code",
+        "license:other",
+        "eval-results",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-06-11T07:51:47.000Z",
+      "modelId": "moonshotai/Kimi-K2.7-Code"
+    }
+  },
+  {
+    "id": "google/gemma-3-4b-it",
+    "name": "gemma-3-4b-it",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67b79c8700245b72c5706777",
+      "id": "google/gemma-3-4b-it",
+      "likes": 1474,
+      "trendingScore": 5,
+      "private": false,
+      "downloads": 1630221,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gemma3",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:1905.07830",
+        "arxiv:1905.10044",
+        "arxiv:1911.11641",
+        "arxiv:1904.09728",
+        "arxiv:1705.03551",
+        "arxiv:1911.01547",
+        "arxiv:1907.10641",
+        "arxiv:1903.00161",
+        "arxiv:2009.03300",
+        "arxiv:2304.06364",
+        "arxiv:2103.03874",
+        "arxiv:2110.14168",
+        "arxiv:2311.12022",
+        "arxiv:2108.07732",
+        "arxiv:2107.03374",
+        "arxiv:2210.03057",
+        "arxiv:2106.03193",
+        "arxiv:1910.11856",
+        "arxiv:2502.12404",
+        "arxiv:2502.21228",
+        "arxiv:2404.16816",
+        "arxiv:2104.12756",
+        "arxiv:2311.16502",
+        "arxiv:2203.10244",
+        "arxiv:2404.12390",
+        "arxiv:1810.12440",
+        "arxiv:1908.02660",
+        "arxiv:2312.11805",
+        "base_model:google/gemma-3-4b-pt",
+        "base_model:finetune:google/gemma-3-4b-pt",
+        "license:gemma",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-02-20T21:20:07.000Z",
+      "modelId": "google/gemma-3-4b-it"
+    }
+  },
+  {
+    "id": "ResembleAI/chatterbox",
+    "name": "chatterbox",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "680a289582ee1640eea64f70",
+      "id": "ResembleAI/chatterbox",
+      "likes": 1779,
+      "trendingScore": 5,
+      "private": false,
+      "downloads": 1785897,
+      "tags": [
+        "chatterbox",
+        "text-to-speech",
+        "speech",
+        "speech-generation",
+        "voice-cloning",
+        "multilingual-tts",
+        "ar",
+        "da",
+        "de",
+        "el",
+        "en",
+        "es",
+        "fi",
+        "fr",
+        "he",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ms",
+        "nl",
+        "no",
+        "pl",
+        "pt",
+        "ru",
+        "sv",
+        "sw",
+        "tr",
+        "zh",
+        "license:mit",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "library_name": "chatterbox",
+      "createdAt": "2025-04-24T12:03:33.000Z",
+      "modelId": "ResembleAI/chatterbox"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.6-27B",
+    "name": "Qwen3.6-27B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69e72c53d67c64360835c464",
+      "id": "Qwen/Qwen3.6-27B",
+      "likes": 2286,
+      "trendingScore": 5,
+      "private": false,
+      "downloads": 5123849,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5",
+        "image-text-to-text",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-04-21T07:50:43.000Z",
+      "modelId": "Qwen/Qwen3.6-27B"
+    }
+  },
+  {
+    "id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+    "name": "Llama-4-Scout-17B-16E-Instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67ed3cd9290a7f9d3301f9c1",
+      "id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+      "likes": 1342,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 163824,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "llama4",
+        "image-text-to-text",
+        "facebook",
+        "meta",
+        "pytorch",
+        "llama",
+        "conversational",
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "id",
+        "it",
+        "pt",
+        "th",
+        "tl",
+        "vi",
+        "arxiv:2204.05149",
+        "base_model:meta-llama/Llama-4-Scout-17B-16E",
+        "base_model:finetune:meta-llama/Llama-4-Scout-17B-16E",
+        "license:other",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-04-02T13:34:17.000Z",
+      "modelId": "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-32B",
+    "name": "Qwen3-32B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "680daa1b62e834e6fd9fdbdf",
+      "id": "Qwen/Qwen3-32B",
+      "likes": 743,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 5153212,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3",
+        "text-generation",
+        "conversational",
+        "arxiv:2309.00071",
+        "arxiv:2505.09388",
+        "license:apache-2.0",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-04-27T03:52:59.000Z",
+      "modelId": "Qwen/Qwen3-32B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-Embedding-4B",
+    "name": "Qwen3-Embedding-4B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "683f07454f6e7115e88614de",
+      "id": "Qwen/Qwen3-Embedding-4B",
+      "likes": 318,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 2754927,
+      "tags": [
+        "sentence-transformers",
+        "safetensors",
+        "qwen3",
+        "text-generation",
+        "transformers",
+        "sentence-similarity",
+        "feature-extraction",
+        "text-embeddings-inference",
+        "arxiv:2506.05176",
+        "base_model:Qwen/Qwen3-4B-Base",
+        "base_model:finetune:Qwen/Qwen3-4B-Base",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2025-06-03T14:31:33.000Z",
+      "modelId": "Qwen/Qwen3-Embedding-4B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+    "name": "Qwen3-VL-30B-A3B-Instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68dbb651542e04c5d9a90b86",
+      "id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+      "likes": 599,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 377007,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_vl_moe",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:2505.09388",
+        "arxiv:2502.13923",
+        "arxiv:2409.12191",
+        "arxiv:2308.12966",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-09-30T10:52:01.000Z",
+      "modelId": "Qwen/Qwen3-VL-30B-A3B-Instruct"
+    }
+  },
+  {
+    "id": "zai-org/GLM-4.7-Flash",
+    "name": "GLM-4.7-Flash",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "696dcefa357a4070754b027e",
+      "id": "zai-org/GLM-4.7-Flash",
+      "likes": 1832,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 1915940,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm4_moe_lite",
+        "text-generation",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2508.06471",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-01-19T06:28:10.000Z",
+      "modelId": "zai-org/GLM-4.7-Flash"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.5-35B-A3B",
+    "name": "Qwen3.5-35B-A3B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "699d71cd2b8317e9175c4457",
+      "id": "Qwen/Qwen3.5-35B-A3B",
+      "likes": 1500,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 2357238,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5_moe",
+        "image-text-to-text",
+        "conversational",
+        "base_model:Qwen/Qwen3.5-35B-A3B-Base",
+        "base_model:finetune:Qwen/Qwen3.5-35B-A3B-Base",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-02-24T09:39:25.000Z",
+      "modelId": "Qwen/Qwen3.5-35B-A3B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.5-122B-A10B",
+    "name": "Qwen3.5-122B-A10B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "699d72c9b5f257599e82bd27",
+      "id": "Qwen/Qwen3.5-122B-A10B",
+      "likes": 615,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 669619,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5_moe",
+        "image-text-to-text",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-02-24T09:43:37.000Z",
+      "modelId": "Qwen/Qwen3.5-122B-A10B"
+    }
+  },
+  {
+    "id": "XiaomiMiMo/MiMo-V2.5-Pro",
+    "name": "MiMo-V2.5-Pro",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69ef5c251d65525815010fba",
+      "id": "XiaomiMiMo/MiMo-V2.5-Pro",
+      "likes": 746,
+      "trendingScore": 4,
+      "private": false,
+      "downloads": 29447,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "mimo_v2",
+        "text-generation",
+        "agent",
+        "long-context",
+        "code",
+        "conversational",
+        "custom_code",
+        "en",
+        "zh",
+        "license:mit",
+        "eval-results",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-04-27T12:52:53.000Z",
+      "modelId": "XiaomiMiMo/MiMo-V2.5-Pro"
+    }
+  },
+  {
+    "id": "intfloat/multilingual-e5-large",
+    "name": "multilingual-e5-large",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "649e866b9badc2e0a464292e",
+      "id": "intfloat/multilingual-e5-large",
+      "likes": 1247,
+      "trendingScore": 3,
+      "private": false,
+      "downloads": 7063892,
+      "tags": [
+        "sentence-transformers",
+        "pytorch",
+        "onnx",
+        "safetensors",
+        "openvino",
+        "xlm-roberta",
+        "mteb",
+        "Sentence Transformers",
+        "sentence-similarity",
+        "feature-extraction",
+        "multilingual",
+        "af",
+        "am",
+        "ar",
+        "as",
+        "az",
+        "be",
+        "bg",
+        "bn",
+        "br",
+        "bs",
+        "ca",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "el",
+        "en",
+        "eo",
+        "es",
+        "et",
+        "eu",
+        "fa",
+        "fi",
+        "fr",
+        "fy",
+        "ga",
+        "gd",
+        "gl",
+        "gu",
+        "ha",
+        "he",
+        "hi",
+        "hr",
+        "hu",
+        "hy",
+        "id",
+        "is",
+        "it",
+        "ja",
+        "jv",
+        "ka",
+        "kk",
+        "km",
+        "kn",
+        "ko",
+        "ku",
+        "ky",
+        "la",
+        "lo",
+        "lt",
+        "lv",
+        "mg",
+        "mk",
+        "ml",
+        "mn",
+        "mr",
+        "ms",
+        "my",
+        "ne",
+        "nl",
+        "no",
+        "om",
+        "or",
+        "pa",
+        "pl",
+        "ps",
+        "pt",
+        "ro",
+        "ru",
+        "sa",
+        "sd",
+        "si",
+        "sk",
+        "sl",
+        "so",
+        "sq",
+        "sr",
+        "su",
+        "sv",
+        "sw",
+        "ta",
+        "te",
+        "th",
+        "tl",
+        "tr",
+        "ug",
+        "uk",
+        "ur",
+        "uz",
+        "vi",
+        "xh",
+        "yi",
+        "zh",
+        "arxiv:2402.05672",
+        "arxiv:2108.08787",
+        "arxiv:2104.08663",
+        "arxiv:2210.07316",
+        "license:mit",
+        "model-index",
+        "eval-results",
+        "text-embeddings-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2023-06-30T07:38:19.000Z",
+      "modelId": "intfloat/multilingual-e5-large"
+    }
+  },
+  {
+    "id": "microsoft/phi-4",
+    "name": "phi-4",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67597bd1b9cdca50cb621f94",
+      "id": "microsoft/phi-4",
+      "likes": 2295,
+      "trendingScore": 3,
+      "private": false,
+      "downloads": 695440,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "phi3",
+        "text-generation",
+        "phi",
+        "nlp",
+        "math",
+        "code",
+        "chat",
+        "conversational",
+        "en",
+        "arxiv:2412.08905",
+        "license:mit",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2024-12-11T11:47:29.000Z",
+      "modelId": "microsoft/phi-4"
+    }
+  },
+  {
+    "id": "google/gemma-3-27b-it",
+    "name": "gemma-3-27b-it",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67c35b9bb236f0d365bf29d3",
+      "id": "google/gemma-3-27b-it",
+      "likes": 2022,
+      "trendingScore": 3,
+      "private": false,
+      "downloads": 383527,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gemma3",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:1905.07830",
+        "arxiv:1905.10044",
+        "arxiv:1911.11641",
+        "arxiv:1904.09728",
+        "arxiv:1705.03551",
+        "arxiv:1911.01547",
+        "arxiv:1907.10641",
+        "arxiv:1903.00161",
+        "arxiv:2009.03300",
+        "arxiv:2304.06364",
+        "arxiv:2103.03874",
+        "arxiv:2110.14168",
+        "arxiv:2311.12022",
+        "arxiv:2108.07732",
+        "arxiv:2107.03374",
+        "arxiv:2210.03057",
+        "arxiv:2106.03193",
+        "arxiv:1910.11856",
+        "arxiv:2502.12404",
+        "arxiv:2502.21228",
+        "arxiv:2404.16816",
+        "arxiv:2104.12756",
+        "arxiv:2311.16502",
+        "arxiv:2203.10244",
+        "arxiv:2404.12390",
+        "arxiv:1810.12440",
+        "arxiv:1908.02660",
+        "arxiv:2312.11805",
+        "base_model:google/gemma-3-27b-pt",
+        "base_model:finetune:google/gemma-3-27b-pt",
+        "license:gemma",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-03-01T19:10:19.000Z",
+      "modelId": "google/gemma-3-27b-it"
+    }
+  },
+  {
+    "id": "sesame/csm-1b",
+    "name": "csm-1b",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67c9c10d54d811c24a021731",
+      "id": "sesame/csm-1b",
+      "likes": 2437,
+      "trendingScore": 3,
+      "private": false,
+      "downloads": 144061,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "csm",
+        "text-to-audio",
+        "text-to-speech",
+        "en",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "library_name": "transformers",
+      "createdAt": "2025-03-06T15:36:45.000Z",
+      "modelId": "sesame/csm-1b"
+    }
+  },
+  {
+    "id": "ResembleAI/chatterbox-turbo",
+    "name": "chatterbox-turbo",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "692ee0d5ca92a8d22322e21d",
+      "id": "ResembleAI/chatterbox-turbo",
+      "likes": 685,
+      "trendingScore": 3,
+      "private": false,
+      "downloads": 0,
+      "tags": [
+        "text-to-speech",
+        "speech",
+        "speech-generation",
+        "voice-cloning",
+        "en",
+        "license:mit",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "createdAt": "2025-12-02T12:51:33.000Z",
+      "modelId": "ResembleAI/chatterbox-turbo"
+    }
+  },
+  {
+    "id": "moonshotai/Kimi-K2.5",
+    "name": "Kimi-K2.5",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69560ecbf73b42a14aa67455",
+      "id": "moonshotai/Kimi-K2.5",
+      "likes": 2867,
+      "trendingScore": 3,
+      "private": false,
+      "downloads": 472466,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "kimi_k25",
+        "feature-extraction",
+        "compressed-tensors",
+        "image-text-to-text",
+        "conversational",
+        "custom_code",
+        "arxiv:2602.02276",
+        "license:other",
+        "eval-results",
+        "deploy:sagemaker",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-01-01T06:06:03.000Z",
+      "modelId": "moonshotai/Kimi-K2.5"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "name": "Qwen3-235B-A22B-Instruct-2507",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "687de260234339fed21e768a",
+      "id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "likes": 796,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 129310,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_moe",
+        "text-generation",
+        "conversational",
+        "arxiv:2402.17463",
+        "arxiv:2407.02490",
+        "arxiv:2501.15383",
+        "arxiv:2404.06654",
+        "arxiv:2505.09388",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-07-21T06:46:56.000Z",
+      "modelId": "Qwen/Qwen3-235B-A22B-Instruct-2507"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V3.1",
+    "name": "DeepSeek-V3.1",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68a686808e8db90f8998697a",
+      "id": "deepseek-ai/DeepSeek-V3.1",
+      "likes": 829,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 226677,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v3",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "arxiv:2412.19437",
+        "base_model:deepseek-ai/DeepSeek-V3.1-Base",
+        "base_model:quantized:deepseek-ai/DeepSeek-V3.1-Base",
+        "license:mit",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "fp8",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-08-21T02:37:52.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V3.1"
+    }
+  },
+  {
+    "id": "zai-org/GLM-4.7",
+    "name": "GLM-4.7",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6948f730f8f6daad510a791b",
+      "id": "zai-org/GLM-4.7",
+      "likes": 2054,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 59938,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm4_moe",
+        "text-generation",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2508.06471",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-12-22T07:45:52.000Z",
+      "modelId": "zai-org/GLM-4.7"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.5-397B-A17B",
+    "name": "Qwen3.5-397B-A17B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6992a330541b46136322b094",
+      "id": "Qwen/Qwen3.5-397B-A17B",
+      "likes": 1556,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 172439,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5_moe",
+        "image-text-to-text",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-02-16T04:55:12.000Z",
+      "modelId": "Qwen/Qwen3.5-397B-A17B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3.5-27B",
+    "name": "Qwen3.5-27B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "699d726468613908140f9c29",
+      "id": "Qwen/Qwen3.5-27B",
+      "likes": 1040,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 2317755,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_5",
+        "image-text-to-text",
+        "conversational",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-02-24T09:41:56.000Z",
+      "modelId": "Qwen/Qwen3.5-27B"
+    }
+  },
+  {
+    "id": "MiniMaxAI/MiniMax-M2.7",
+    "name": "MiniMax-M2.7",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69d71ee848d2a47600feda6e",
+      "id": "MiniMaxAI/MiniMax-M2.7",
+      "likes": 1246,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 1222347,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "minimax_m2",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "license:other",
+        "eval-results",
+        "endpoints_compatible",
+        "fp8",
+        "deploy:sagemaker",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-04-09T03:37:12.000Z",
+      "modelId": "MiniMaxAI/MiniMax-M2.7"
+    }
+  },
+  {
+    "id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+    "name": "NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a203f1c01730f26f9c4c3f8",
+      "id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "likes": 338,
+      "trendingScore": 2,
+      "private": false,
+      "downloads": 231785,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "nemotron_h",
+        "text-generation",
+        "nvidia",
+        "pytorch",
+        "nemotron-3",
+        "latent-moe",
+        "mtp",
+        "conversational",
+        "en",
+        "fr",
+        "es",
+        "it",
+        "de",
+        "pt",
+        "ja",
+        "ko",
+        "hi",
+        "ar",
+        "zh",
+        "he",
+        "dataset:nvidia/nemotron-post-training-v3",
+        "dataset:nvidia/nemotron-pre-training-datasets",
+        "license:other",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-06-03T14:50:04.000Z",
+      "modelId": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16"
+    }
+  },
+  {
+    "id": "BAAI/bge-base-en-v1.5",
+    "name": "bge-base-en-v1.5",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "64ff2c767a4a6ae49afa72b5",
+      "id": "BAAI/bge-base-en-v1.5",
+      "likes": 470,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 11130513,
+      "tags": [
+        "sentence-transformers",
+        "pytorch",
+        "onnx",
+        "safetensors",
+        "bert",
+        "feature-extraction",
+        "sentence-similarity",
+        "transformers",
+        "mteb",
+        "en",
+        "arxiv:2401.03462",
+        "arxiv:2312.15503",
+        "arxiv:2311.13534",
+        "arxiv:2310.07554",
+        "arxiv:2309.07597",
+        "license:mit",
+        "model-index",
+        "text-embeddings-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2023-09-11T15:04:22.000Z",
+      "modelId": "BAAI/bge-base-en-v1.5"
+    }
+  },
+  {
+    "id": "NousResearch/Hermes-3-Llama-3.1-70B",
+    "name": "Hermes-3-Llama-3.1-70B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "66a7a6ed5baa33fe01c27c87",
+      "id": "NousResearch/Hermes-3-Llama-3.1-70B",
+      "likes": 138,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 2778,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "llama",
+        "text-generation",
+        "Llama-3",
+        "instruct",
+        "finetune",
+        "chatml",
+        "gpt4",
+        "synthetic data",
+        "distillation",
+        "function calling",
+        "json mode",
+        "axolotl",
+        "roleplaying",
+        "chat",
+        "conversational",
+        "en",
+        "arxiv:2408.11857",
+        "base_model:meta-llama/Llama-3.1-70B",
+        "base_model:finetune:meta-llama/Llama-3.1-70B",
+        "license:llama3",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2024-07-29T14:27:57.000Z",
+      "modelId": "NousResearch/Hermes-3-Llama-3.1-70B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen2.5-72B-Instruct",
+    "name": "Qwen2.5-72B-Instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "66e81cefd1b1391042d0e47e",
+      "id": "Qwen/Qwen2.5-72B-Instruct",
+      "likes": 982,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 439408,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen2",
+        "text-generation",
+        "chat",
+        "conversational",
+        "en",
+        "arxiv:2309.00071",
+        "arxiv:2407.10671",
+        "base_model:Qwen/Qwen2.5-72B",
+        "base_model:finetune:Qwen/Qwen2.5-72B",
+        "license:other",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "deploy:sagemaker",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2024-09-16T11:56:31.000Z",
+      "modelId": "Qwen/Qwen2.5-72B-Instruct"
+    }
+  },
+  {
+    "id": "google/gemma-3-12b-it",
+    "name": "gemma-3-12b-it",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67c35be6eae05d8f94fae4c2",
+      "id": "google/gemma-3-12b-it",
+      "likes": 817,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 761252,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "gemma3",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:1905.07830",
+        "arxiv:1905.10044",
+        "arxiv:1911.11641",
+        "arxiv:1904.09728",
+        "arxiv:1705.03551",
+        "arxiv:1911.01547",
+        "arxiv:1907.10641",
+        "arxiv:1903.00161",
+        "arxiv:2009.03300",
+        "arxiv:2304.06364",
+        "arxiv:2103.03874",
+        "arxiv:2110.14168",
+        "arxiv:2311.12022",
+        "arxiv:2108.07732",
+        "arxiv:2107.03374",
+        "arxiv:2210.03057",
+        "arxiv:2106.03193",
+        "arxiv:1910.11856",
+        "arxiv:2502.12404",
+        "arxiv:2502.21228",
+        "arxiv:2404.16816",
+        "arxiv:2104.12756",
+        "arxiv:2311.16502",
+        "arxiv:2203.10244",
+        "arxiv:2404.12390",
+        "arxiv:1810.12440",
+        "arxiv:1908.02660",
+        "arxiv:2312.11805",
+        "base_model:google/gemma-3-12b-pt",
+        "base_model:finetune:google/gemma-3-12b-pt",
+        "license:gemma",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-03-01T19:11:34.000Z",
+      "modelId": "google/gemma-3-12b-it"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-R1-0528",
+    "name": "DeepSeek-R1-0528",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6836db82a3626cb7b5343be8",
+      "id": "deepseek-ai/DeepSeek-R1-0528",
+      "likes": 2460,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 213477,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v3",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "arxiv:2501.12948",
+        "license:mit",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "fp8",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-05-28T09:46:42.000Z",
+      "modelId": "deepseek-ai/DeepSeek-R1-0528"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+    "name": "Qwen3-235B-A22B-Thinking-2507",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68830f190d96f185cd243ef5",
+      "id": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+      "likes": 409,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 12191,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_moe",
+        "text-generation",
+        "conversational",
+        "arxiv:2402.17463",
+        "arxiv:2407.02490",
+        "arxiv:2501.15383",
+        "arxiv:2404.06654",
+        "arxiv:2505.09388",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-07-25T04:59:05.000Z",
+      "modelId": "Qwen/Qwen3-235B-A22B-Thinking-2507"
+    }
+  },
+  {
+    "id": "stepfun-ai/Step-3.5-Flash",
+    "name": "Step-3.5-Flash",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "697f08e18b0dd3ffab869789",
+      "id": "stepfun-ai/Step-3.5-Flash",
+      "likes": 834,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 111933,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "step3p5",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "arxiv:2602.10604",
+        "arxiv:2601.05593",
+        "arxiv:2507.19427",
+        "license:apache-2.0",
+        "eval-results",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-02-01T08:03:45.000Z",
+      "modelId": "stepfun-ai/Step-3.5-Flash"
+    }
+  },
+  {
+    "id": "moonshotai/Kimi-K2.6",
+    "name": "Kimi-K2.6",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "69ddc148e75532a1d02c97c7",
+      "id": "moonshotai/Kimi-K2.6",
+      "likes": 1601,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 599946,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "kimi_k25",
+        "feature-extraction",
+        "compressed-tensors",
+        "image-text-to-text",
+        "conversational",
+        "custom_code",
+        "arxiv:2602.02276",
+        "license:other",
+        "eval-results",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-04-14T04:23:36.000Z",
+      "modelId": "moonshotai/Kimi-K2.6"
+    }
+  },
+  {
+    "id": "stepfun-ai/Step-3.7-Flash",
+    "name": "Step-3.7-Flash",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6a110d5abf07261a989071d8",
+      "id": "stepfun-ai/Step-3.7-Flash",
+      "likes": 449,
+      "trendingScore": 1,
+      "private": false,
+      "downloads": 17022,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "step3p7",
+        "image-text-to-text",
+        "vision-language",
+        "multimodal",
+        "moe",
+        "conversational",
+        "custom_code",
+        "en",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2026-05-23T02:13:46.000Z",
+      "modelId": "stepfun-ai/Step-3.7-Flash"
+    }
+  },
+  {
+    "id": "BAAI/bge-large-en-v1.5",
+    "name": "bge-large-en-v1.5",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "64fff5087f91f94040eee912",
+      "id": "BAAI/bge-large-en-v1.5",
+      "likes": 720,
+      "trendingScore": 0.5,
+      "private": false,
+      "downloads": 13296778,
+      "tags": [
+        "sentence-transformers",
+        "pytorch",
+        "onnx",
+        "safetensors",
+        "bert",
+        "feature-extraction",
+        "sentence-similarity",
+        "transformers",
+        "mteb",
+        "en",
+        "arxiv:2401.03462",
+        "arxiv:2312.15503",
+        "arxiv:2311.13534",
+        "arxiv:2310.07554",
+        "arxiv:2309.07597",
+        "license:mit",
+        "model-index",
+        "eval-results",
+        "text-embeddings-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2023-09-12T05:20:08.000Z",
+      "modelId": "BAAI/bge-large-en-v1.5"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V3-0324",
+    "name": "DeepSeek-V3-0324",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67e125b6c185423c1e404364",
+      "id": "deepseek-ai/DeepSeek-V3-0324",
+      "likes": 3167,
+      "trendingScore": 0.5,
+      "private": false,
+      "downloads": 1042736,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v3",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "arxiv:2412.19437",
+        "license:mit",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-03-24T09:28:22.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V3-0324"
+    }
+  },
+  {
+    "id": "intfloat/multilingual-e5-large-instruct",
+    "name": "multilingual-e5-large-instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "65c4d034d89d320a17e7a437",
+      "id": "intfloat/multilingual-e5-large-instruct",
+      "likes": 635,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 1995557,
+      "tags": [
+        "sentence-transformers",
+        "onnx",
+        "safetensors",
+        "xlm-roberta",
+        "feature-extraction",
+        "mteb",
+        "transformers",
+        "multilingual",
+        "af",
+        "am",
+        "ar",
+        "as",
+        "az",
+        "be",
+        "bg",
+        "bn",
+        "br",
+        "bs",
+        "ca",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "el",
+        "en",
+        "eo",
+        "es",
+        "et",
+        "eu",
+        "fa",
+        "fi",
+        "fr",
+        "fy",
+        "ga",
+        "gd",
+        "gl",
+        "gu",
+        "ha",
+        "he",
+        "hi",
+        "hr",
+        "hu",
+        "hy",
+        "id",
+        "is",
+        "it",
+        "ja",
+        "jv",
+        "ka",
+        "kk",
+        "km",
+        "kn",
+        "ko",
+        "ku",
+        "ky",
+        "la",
+        "lo",
+        "lt",
+        "lv",
+        "mg",
+        "mk",
+        "ml",
+        "mn",
+        "mr",
+        "ms",
+        "my",
+        "ne",
+        "nl",
+        "no",
+        "om",
+        "or",
+        "pa",
+        "pl",
+        "ps",
+        "pt",
+        "ro",
+        "ru",
+        "sa",
+        "sd",
+        "si",
+        "sk",
+        "sl",
+        "so",
+        "sq",
+        "sr",
+        "su",
+        "sv",
+        "sw",
+        "ta",
+        "te",
+        "th",
+        "tl",
+        "tr",
+        "ug",
+        "uk",
+        "ur",
+        "uz",
+        "vi",
+        "xh",
+        "yi",
+        "zh",
+        "arxiv:2402.05672",
+        "arxiv:2401.00368",
+        "arxiv:2104.08663",
+        "arxiv:2210.07316",
+        "license:mit",
+        "model-index",
+        "text-embeddings-inference",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2024-02-08T12:59:32.000Z",
+      "modelId": "intfloat/multilingual-e5-large-instruct"
+    }
+  },
+  {
+    "id": "BAAI/bge-en-icl",
+    "name": "bge-en-icl",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "66a21cde5652fd2458a8b004",
+      "id": "BAAI/bge-en-icl",
+      "likes": 137,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 15552,
+      "tags": [
+        "sentence-transformers",
+        "safetensors",
+        "mistral",
+        "feature-extraction",
+        "sentence-similarity",
+        "transformers",
+        "mteb",
+        "arxiv:2409.15700",
+        "arxiv:2309.07597",
+        "license:apache-2.0",
+        "model-index",
+        "text-embeddings-inference",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "feature-extraction",
+      "library_name": "sentence-transformers",
+      "createdAt": "2024-07-25T09:37:34.000Z",
+      "modelId": "BAAI/bge-en-icl"
+    }
+  },
+  {
+    "id": "Zyphra/Zonos-v0.1-transformer",
+    "name": "Zonos-v0.1-transformer",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67a5388dfbba9036a1853bc9",
+      "id": "Zyphra/Zonos-v0.1-transformer",
+      "likes": 435,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 166650,
+      "tags": [
+        "zonos",
+        "safetensors",
+        "text-to-speech",
+        "license:apache-2.0",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "library_name": "zonos",
+      "createdAt": "2025-02-06T22:32:45.000Z",
+      "modelId": "Zyphra/Zonos-v0.1-transformer"
+    }
+  },
+  {
+    "id": "Zyphra/Zonos-v0.1-hybrid",
+    "name": "Zonos-v0.1-hybrid",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "67a5391b53c1093805764e7c",
+      "id": "Zyphra/Zonos-v0.1-hybrid",
+      "likes": 1107,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 1378,
+      "tags": [
+        "zonos",
+        "safetensors",
+        "text-to-speech",
+        "license:apache-2.0",
+        "region:us"
+      ],
+      "pipeline_tag": "text-to-speech",
+      "library_name": "zonos",
+      "createdAt": "2025-02-06T22:35:07.000Z",
+      "modelId": "Zyphra/Zonos-v0.1-hybrid"
+    }
+  },
+  {
+    "id": "meta-llama/Llama-Guard-4-12B",
+    "name": "Llama-Guard-4-12B",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "6808cf51b36aba80dd01f3dc",
+      "id": "meta-llama/Llama-Guard-4-12B",
+      "likes": 121,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 56626,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "llama4",
+        "image-text-to-text",
+        "facebook",
+        "meta",
+        "pytorch",
+        "llama",
+        "safety",
+        "conversational",
+        "en",
+        "arxiv:2503.05731",
+        "arxiv:2407.21783",
+        "license:other",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-04-23T11:30:25.000Z",
+      "modelId": "meta-llama/Llama-Guard-4-12B"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+    "name": "Qwen3-Next-80B-A3B-Instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68c04a8865953b21d7f88ec6",
+      "id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+      "likes": 1052,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 279721,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_next",
+        "text-generation",
+        "conversational",
+        "arxiv:2309.00071",
+        "arxiv:2404.06654",
+        "arxiv:2505.09388",
+        "arxiv:2501.15383",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:sagemaker",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-09-09T15:40:56.000Z",
+      "modelId": "Qwen/Qwen3-Next-80B-A3B-Instruct"
+    }
+  },
+  {
+    "id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
+    "name": "Qwen3-VL-235B-A22B-Instruct",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68d0c878f7dc520a235be3c5",
+      "id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
+      "likes": 415,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 598170,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "qwen3_vl_moe",
+        "image-text-to-text",
+        "conversational",
+        "arxiv:2505.09388",
+        "arxiv:2502.13923",
+        "arxiv:2409.12191",
+        "arxiv:2308.12966",
+        "license:apache-2.0",
+        "eval-results",
+        "endpoints_compatible",
+        "deploy:azure",
+        "region:us"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "library_name": "transformers",
+      "createdAt": "2025-09-22T03:54:32.000Z",
+      "modelId": "Qwen/Qwen3-VL-235B-A22B-Instruct"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V3.1-Terminus",
+    "name": "DeepSeek-V3.1-Terminus",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68d0d6e49597b03cc65021d6",
+      "id": "deepseek-ai/DeepSeek-V3.1-Terminus",
+      "likes": 366,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 16898,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v3",
+        "text-generation",
+        "conversational",
+        "custom_code",
+        "arxiv:2412.19437",
+        "base_model:deepseek-ai/DeepSeek-V3.1-Base",
+        "base_model:quantized:deepseek-ai/DeepSeek-V3.1-Base",
+        "license:mit",
+        "eval-results",
+        "text-generation-inference",
+        "endpoints_compatible",
+        "fp8",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-09-22T04:56:04.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V3.1-Terminus"
+    }
+  },
+  {
+    "id": "zai-org/GLM-4.6",
+    "name": "GLM-4.6",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "68dace7bccfdaf8c81d0243d",
+      "id": "zai-org/GLM-4.6",
+      "likes": 1234,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 17422,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm4_moe",
+        "text-generation",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2508.06471",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us",
+        "deploy:azure"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-09-29T18:22:51.000Z",
+      "modelId": "zai-org/GLM-4.6"
+    }
+  },
+  {
+    "id": "deepseek-ai/DeepSeek-V3.2",
+    "name": "DeepSeek-V3.2",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "692cfec93b25b81d09307b94",
+      "id": "deepseek-ai/DeepSeek-V3.2",
+      "likes": 1474,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 1555091,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "deepseek_v32",
+        "text-generation",
+        "conversational",
+        "base_model:deepseek-ai/DeepSeek-V3.2-Exp-Base",
+        "base_model:finetune:deepseek-ai/DeepSeek-V3.2-Exp-Base",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "fp8",
+        "region:us",
+        "deploy:sagemaker"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2025-12-01T02:34:49.000Z",
+      "modelId": "deepseek-ai/DeepSeek-V3.2"
+    }
+  },
+  {
+    "id": "zai-org/GLM-5",
+    "name": "GLM-5",
+    "provider": "deepinfra",
+    "pricing": {},
+    "context_length": 0,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "",
+    "benchmarks": {},
+    "raw": {
+      "_id": "698c0bd27f65d407e253418c",
+      "id": "zai-org/GLM-5",
+      "likes": 2119,
+      "trendingScore": 0,
+      "private": false,
+      "downloads": 64771,
+      "tags": [
+        "transformers",
+        "safetensors",
+        "glm_moe_dsa",
+        "text-generation",
+        "conversational",
+        "en",
+        "zh",
+        "arxiv:2602.15763",
+        "license:mit",
+        "eval-results",
+        "endpoints_compatible",
+        "region:us"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": "transformers",
+      "createdAt": "2026-02-11T04:55:46.000Z",
+      "modelId": "zai-org/GLM-5"
+    }
+  }
+]

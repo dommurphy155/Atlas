@@ -1,0 +1,1800 @@
+[
+  {
+    "id": "minimax/minimax-m3:free",
+    "name": "MiniMax: MiniMax M3 (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 1048576,
+    "modalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "tasks": [
+      "agentic",
+      "coding"
+    ],
+    "architecture": "text+image+video->text",
+    "benchmarks": {
+      "design_arena": [
+        {
+          "arena": "agents",
+          "category": "agenticgamedev",
+          "elo": 1158,
+          "win_rate": 44.5,
+          "rank": 18
+        },
+        {
+          "arena": "agents",
+          "category": "androidnative",
+          "elo": 1171,
+          "win_rate": 43.6,
+          "rank": 23
+        },
+        {
+          "arena": "agents",
+          "category": "fullstack",
+          "elo": 1203,
+          "win_rate": 49.3,
+          "rank": 15
+        },
+        {
+          "arena": "agents",
+          "category": "htmlslides",
+          "elo": 1186,
+          "win_rate": 46.3,
+          "rank": 10
+        },
+        {
+          "arena": "agents",
+          "category": "mobileapps",
+          "elo": 1197,
+          "win_rate": 46.1,
+          "rank": 19
+        },
+        {
+          "arena": "agents",
+          "category": "python-pptxslides",
+          "elo": 1229,
+          "win_rate": 49.1,
+          "rank": 10
+        },
+        {
+          "arena": "agents",
+          "category": "webapps",
+          "elo": 1227,
+          "win_rate": 49,
+          "rank": 17
+        },
+        {
+          "arena": "models",
+          "category": "3d",
+          "elo": 1249,
+          "win_rate": 52.1,
+          "rank": 33
+        },
+        {
+          "arena": "models",
+          "category": "asciiart",
+          "elo": 1185,
+          "win_rate": 47.7,
+          "rank": 27
+        },
+        {
+          "arena": "models",
+          "category": "codecategories",
+          "elo": 1267,
+          "win_rate": 52.4,
+          "rank": 28
+        },
+        {
+          "arena": "models",
+          "category": "dataviz",
+          "elo": 1254,
+          "win_rate": 51.8,
+          "rank": 30
+        },
+        {
+          "arena": "models",
+          "category": "gamedev",
+          "elo": 1242,
+          "win_rate": 47.8,
+          "rank": 36
+        },
+        {
+          "arena": "models",
+          "category": "svg",
+          "elo": 1205,
+          "win_rate": 48.5,
+          "rank": 30
+        },
+        {
+          "arena": "models",
+          "category": "uicomponent",
+          "elo": 1267,
+          "win_rate": 51.9,
+          "rank": 29
+        },
+        {
+          "arena": "models",
+          "category": "website",
+          "elo": 1272,
+          "win_rate": 52.9,
+          "rank": 27
+        }
+      ],
+      "artificial_analysis": {
+        "intelligence_index": 35.7,
+        "coding_index": 58.6,
+        "agentic_index": 31
+      }
+    },
+    "score_hint": 0.975,
+    "raw": {
+      "id": "minimax/minimax-m3:free",
+      "canonical_slug": "minimax/minimax-m3-20260531",
+      "hugging_face_id": "MiniMaxAI/Minimax-M3",
+      "name": "MiniMax: MiniMax M3 (free)",
+      "created": 1780245374,
+      "description": "MiniMax-M3 is a multimodal foundation model from MiniMax. It supports text, image, and video inputs with text output, a 1M-token context window, and is suited for long-horizon agentic work, coding,...",
+      "context_length": 1048576,
+      "architecture": {
+        "modality": "text+image+video->text",
+        "input_modalities": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 943718,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/minimax/minimax-m3-20260531/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [
+          {
+            "arena": "agents",
+            "category": "agenticgamedev",
+            "elo": 1158,
+            "win_rate": 44.5,
+            "rank": 18
+          },
+          {
+            "arena": "agents",
+            "category": "androidnative",
+            "elo": 1171,
+            "win_rate": 43.6,
+            "rank": 23
+          },
+          {
+            "arena": "agents",
+            "category": "fullstack",
+            "elo": 1203,
+            "win_rate": 49.3,
+            "rank": 15
+          },
+          {
+            "arena": "agents",
+            "category": "htmlslides",
+            "elo": 1186,
+            "win_rate": 46.3,
+            "rank": 10
+          },
+          {
+            "arena": "agents",
+            "category": "mobileapps",
+            "elo": 1197,
+            "win_rate": 46.1,
+            "rank": 19
+          },
+          {
+            "arena": "agents",
+            "category": "python-pptxslides",
+            "elo": 1229,
+            "win_rate": 49.1,
+            "rank": 10
+          },
+          {
+            "arena": "agents",
+            "category": "webapps",
+            "elo": 1227,
+            "win_rate": 49,
+            "rank": 17
+          },
+          {
+            "arena": "models",
+            "category": "3d",
+            "elo": 1249,
+            "win_rate": 52.1,
+            "rank": 33
+          },
+          {
+            "arena": "models",
+            "category": "asciiart",
+            "elo": 1185,
+            "win_rate": 47.7,
+            "rank": 27
+          },
+          {
+            "arena": "models",
+            "category": "codecategories",
+            "elo": 1267,
+            "win_rate": 52.4,
+            "rank": 28
+          },
+          {
+            "arena": "models",
+            "category": "dataviz",
+            "elo": 1254,
+            "win_rate": 51.8,
+            "rank": 30
+          },
+          {
+            "arena": "models",
+            "category": "gamedev",
+            "elo": 1242,
+            "win_rate": 47.8,
+            "rank": 36
+          },
+          {
+            "arena": "models",
+            "category": "svg",
+            "elo": 1205,
+            "win_rate": 48.5,
+            "rank": 30
+          },
+          {
+            "arena": "models",
+            "category": "uicomponent",
+            "elo": 1267,
+            "win_rate": 51.9,
+            "rank": 29
+          },
+          {
+            "arena": "models",
+            "category": "website",
+            "elo": 1272,
+            "win_rate": 52.9,
+            "rank": 27
+          }
+        ],
+        "artificial_analysis": {
+          "intelligence_index": 35.7,
+          "coding_index": 58.6,
+          "agentic_index": 31
+        }
+      },
+      "reasoning": {
+        "mandatory": false
+      }
+    }
+  },
+  {
+    "id": "nvidia/nemotron-3.5-lightning:free",
+    "name": "NVIDIA: Nemotron 3.5 Lightning (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 1000000,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {
+      "design_arena": [],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 26.8,
+        "agentic_index": null
+      }
+    },
+    "score_hint": 0.9,
+    "raw": {
+      "id": "nvidia/nemotron-3.5-lightning:free",
+      "canonical_slug": "nvidia/nemotron-3.5-lightning-20260807",
+      "hugging_face_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "name": "NVIDIA: Nemotron 3.5 Lightning (free)",
+      "created": 1786452751,
+      "description": "NVIDIA Nemotron 3.5 Lightning is an open mixture-of-experts model from NVIDIA, with 3B active parameters out of 30B total. It is suited for high-throughput agentic workloads and specialized tasks that...",
+      "context_length": 1000000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1000000,
+        "max_completion_tokens": 65536,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/nvidia/nemotron-3.5-lightning-20260807/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 26.8,
+          "agentic_index": null
+        }
+      },
+      "reasoning": {
+        "mandatory": false
+      }
+    }
+  },
+  {
+    "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "name": "NVIDIA: Nemotron 3 Ultra (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 1000000,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "reasoning"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {
+      "design_arena": [
+        {
+          "arena": "models",
+          "category": "3d",
+          "elo": 1171,
+          "win_rate": 41,
+          "rank": 59
+        },
+        {
+          "arena": "models",
+          "category": "asciiart",
+          "elo": 1099,
+          "win_rate": 36.4,
+          "rank": 55
+        },
+        {
+          "arena": "models",
+          "category": "codecategories",
+          "elo": 1153,
+          "win_rate": 36.3,
+          "rank": 77
+        },
+        {
+          "arena": "models",
+          "category": "dataviz",
+          "elo": 1159,
+          "win_rate": 38.3,
+          "rank": 70
+        },
+        {
+          "arena": "models",
+          "category": "gamedev",
+          "elo": 1156,
+          "win_rate": 37,
+          "rank": 70
+        },
+        {
+          "arena": "models",
+          "category": "svg",
+          "elo": 1113,
+          "win_rate": 36.2,
+          "rank": 58
+        },
+        {
+          "arena": "models",
+          "category": "uicomponent",
+          "elo": 1158,
+          "win_rate": 37.4,
+          "rank": 70
+        },
+        {
+          "arena": "models",
+          "category": "website",
+          "elo": 1142,
+          "win_rate": 34.3,
+          "rank": 82
+        }
+      ],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 49.3,
+        "agentic_index": 21.7
+      }
+    },
+    "score_hint": 0.965,
+    "raw": {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "canonical_slug": "nvidia/nemotron-3-ultra-550b-a55b-20260604",
+      "hugging_face_id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "name": "NVIDIA: Nemotron 3 Ultra (free)",
+      "created": 1780551208,
+      "description": "NVIDIA Nemotron 3 Ultra is an open frontier-reasoning and orchestration model from NVIDIA, with 55B active parameters out of 550B total (MoE). Built on a hybrid Transformer-Mamba mixture-of-experts architecture, it...",
+      "context_length": 1000000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1000000,
+        "max_completion_tokens": 65536,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "reasoning_effort",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/nvidia/nemotron-3-ultra-550b-a55b-20260604/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [
+          {
+            "arena": "models",
+            "category": "3d",
+            "elo": 1171,
+            "win_rate": 41,
+            "rank": 59
+          },
+          {
+            "arena": "models",
+            "category": "asciiart",
+            "elo": 1099,
+            "win_rate": 36.4,
+            "rank": 55
+          },
+          {
+            "arena": "models",
+            "category": "codecategories",
+            "elo": 1153,
+            "win_rate": 36.3,
+            "rank": 77
+          },
+          {
+            "arena": "models",
+            "category": "dataviz",
+            "elo": 1159,
+            "win_rate": 38.3,
+            "rank": 70
+          },
+          {
+            "arena": "models",
+            "category": "gamedev",
+            "elo": 1156,
+            "win_rate": 37,
+            "rank": 70
+          },
+          {
+            "arena": "models",
+            "category": "svg",
+            "elo": 1113,
+            "win_rate": 36.2,
+            "rank": 58
+          },
+          {
+            "arena": "models",
+            "category": "uicomponent",
+            "elo": 1158,
+            "win_rate": 37.4,
+            "rank": 70
+          },
+          {
+            "arena": "models",
+            "category": "website",
+            "elo": 1142,
+            "win_rate": 34.3,
+            "rank": 82
+          }
+        ],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 49.3,
+          "agentic_index": 21.7
+        }
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true,
+        "supports_max_tokens": true,
+        "supported_efforts": [
+          "high",
+          "medium"
+        ],
+        "default_effort": "high"
+      }
+    }
+  },
+  {
+    "id": "google/lyria-3-clip-preview",
+    "name": "Google: Lyria 3 Clip Preview",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 1048576,
+    "modalities": [
+      "text",
+      "image"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "text+image->text+audio",
+    "benchmarks": {},
+    "score_hint": 0.22999999999999998,
+    "raw": {
+      "id": "google/lyria-3-clip-preview",
+      "canonical_slug": "google/lyria-3-clip-preview-20260330",
+      "hugging_face_id": null,
+      "name": "Google: Lyria 3 Clip Preview",
+      "created": 1774907255,
+      "description": "30 second duration clips are priced at $0.04 per clip. Lyria 3 is Google's family of music generation models, available through the Gemini API. With Lyria 3, you can generate...",
+      "context_length": 1048576,
+      "architecture": {
+        "modality": "text+image->text+audio",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "audio"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "max_tokens",
+        "response_format",
+        "seed",
+        "temperature",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/google/lyria-3-clip-preview-20260330/endpoints"
+      }
+    }
+  },
+  {
+    "id": "google/lyria-3-pro-preview",
+    "name": "Google: Lyria 3 Pro Preview",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 1048576,
+    "modalities": [
+      "text",
+      "image"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "text+image->text+audio",
+    "benchmarks": {},
+    "score_hint": 0.22499999999999998,
+    "raw": {
+      "id": "google/lyria-3-pro-preview",
+      "canonical_slug": "google/lyria-3-pro-preview-20260330",
+      "hugging_face_id": null,
+      "name": "Google: Lyria 3 Pro Preview",
+      "created": 1774907286,
+      "description": "Full-length songs are priced at $0.08 per song. Lyria 3 is Google's family of music generation models, available through the Gemini API. With Lyria 3, you can generate high-quality, 48kHz...",
+      "context_length": 1048576,
+      "architecture": {
+        "modality": "text+image->text+audio",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "audio"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "max_tokens",
+        "response_format",
+        "seed",
+        "temperature",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/google/lyria-3-pro-preview-20260330/endpoints"
+      }
+    }
+  },
+  {
+    "id": "dots-studio/dots-3-note-preview:free",
+    "name": "Dots Studio: Dots3-Note Preview (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 512000,
+    "modalities": [
+      "text",
+      "image"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "text+image->text",
+    "benchmarks": {},
+    "score_hint": 0.745,
+    "raw": {
+      "id": "dots-studio/dots-3-note-preview:free",
+      "canonical_slug": "dots-studio/dots-3-note-preview-20260813",
+      "hugging_face_id": null,
+      "name": "Dots Studio: Dots3-Note Preview (free)",
+      "created": 1786680361,
+      "description": "Dots3-Note Preview is an open-weight mixture-of-experts model from Dots Studio, with 16B active parameters out of 280B total. It is the lightest model in the Dots 3 family and is...",
+      "context_length": 512000,
+      "architecture": {
+        "modality": "text+image->text",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 512000,
+        "max_completion_tokens": 460800,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": "2026-09-30",
+      "links": {
+        "details": "/api/v1/models/dots-studio/dots-3-note-preview-20260813/endpoints"
+      },
+      "reasoning": {
+        "mandatory": false
+      }
+    }
+  },
+  {
+    "id": "poolside/laguna-s-2.1:free",
+    "name": "Poolside: Laguna S 2.1 (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic",
+      "coding"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {},
+    "score_hint": 0.92,
+    "raw": {
+      "id": "poolside/laguna-s-2.1:free",
+      "canonical_slug": "poolside/laguna-s-2.1-20260720",
+      "hugging_face_id": "poolside/Laguna-S-2.1",
+      "name": "Poolside: Laguna S 2.1 (free)",
+      "created": 1784652683,
+      "description": "Laguna S 2.1 is the latest coding agent model from [Poolside](<https://poolside.ai/>). Laguna S 2.1 is a 118B total parameter model with 8B active parameters, scoring 70.2% on Terminal-Bench 2.1 and...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "temperature",
+        "tool_choice",
+        "tools"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/poolside/laguna-s-2.1-20260720/endpoints"
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true
+      }
+    }
+  },
+  {
+    "id": "poolside/laguna-xs-2.1:free",
+    "name": "Poolside: Laguna XS 2.1 (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic",
+      "coding"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {},
+    "score_hint": 0.645,
+    "raw": {
+      "id": "poolside/laguna-xs-2.1:free",
+      "canonical_slug": "poolside/laguna-xs-2.1-20260625",
+      "hugging_face_id": "poolside/Laguna-XS-2.1",
+      "name": "Poolside: Laguna XS 2.1 (free)",
+      "created": 1783002429,
+      "description": "Laguna XS 2.1 is the latest coding agent model in the 33B-A3B category from [Poolside](https://poolside.ai/) and a step forward from their Laguna XS.2 model (released in April 2026). It combines...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "temperature",
+        "tool_choice",
+        "tools"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/poolside/laguna-xs-2.1-20260625/endpoints"
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true
+      }
+    }
+  },
+  {
+    "id": "cohere/north-mini-code:free",
+    "name": "Cohere: North Mini Code (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 256000,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic",
+      "coding"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {
+      "design_arena": [],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 36.5,
+        "agentic_index": 1.1
+      }
+    },
+    "score_hint": 0.655,
+    "raw": {
+      "id": "cohere/north-mini-code:free",
+      "canonical_slug": "cohere/north-mini-code-20260617",
+      "hugging_face_id": "CohereLabs/North-Mini-Code-1.0",
+      "name": "Cohere: North Mini Code (free)",
+      "created": 1781723748,
+      "description": "North Mini Code is Cohere's first agentic coding model and the debut of its North family. A sparse mixture-of-experts model with 30B total parameters and 3B active, it is optimized...",
+      "context_length": 256000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Cohere",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 256000,
+        "max_completion_tokens": 64000,
+        "is_moderated": true
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "max_tokens",
+        "presence_penalty",
+        "reasoning",
+        "seed",
+        "stop",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/cohere/north-mini-code-20260617/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 36.5,
+          "agentic_index": 1.1
+        }
+      },
+      "reasoning": {
+        "mandatory": false
+      }
+    }
+  },
+  {
+    "id": "nvidia/nemotron-3-super-120b-a12b:free",
+    "name": "NVIDIA: Nemotron 3 Super (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {
+      "design_arena": [],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 37.7,
+        "agentic_index": 4.2
+      }
+    },
+    "score_hint": 0.79,
+    "raw": {
+      "id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "canonical_slug": "nvidia/nemotron-3-super-120b-a12b-20230311",
+      "hugging_face_id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8",
+      "name": "NVIDIA: Nemotron 3 Super (free)",
+      "created": 1773245239,
+      "description": "NVIDIA Nemotron 3 Super is a 120B-parameter open hybrid MoE model, activating just 12B parameters for maximum compute efficiency and accuracy in complex multi-agent applications. Built on a hybrid Mamba-Transformer...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 235929,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "reasoning_effort",
+        "response_format",
+        "seed",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/nvidia/nemotron-3-super-120b-a12b-20230311/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 37.7,
+          "agentic_index": 4.2
+        }
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true,
+        "supports_max_tokens": true,
+        "supported_efforts": [
+          "medium",
+          "low"
+        ],
+        "default_effort": "medium"
+      }
+    }
+  },
+  {
+    "id": "inclusionai/ling-3.0-flash-fin:free",
+    "name": "inclusionAI: Ling 3.0 Flash Fin (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {},
+    "score_hint": 0.875,
+    "raw": {
+      "id": "inclusionai/ling-3.0-flash-fin:free",
+      "canonical_slug": "inclusionai/ling-3.0-flash-fin-20260827",
+      "hugging_face_id": null,
+      "name": "inclusionAI: Ling 3.0 Flash Fin (free)",
+      "created": 1787846290,
+      "description": "Ling 3.0 Flash Fin is a finance-focused mixture-of-experts model from InclusionAI, built on Ling 3.0 Flash with 5.1B active parameters out of 124B total. It is designed for real-world investment...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logprobs",
+        "max_tokens",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "seed",
+        "stop",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/inclusionai/ling-3.0-flash-fin-20260827/endpoints"
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true
+      }
+    }
+  },
+  {
+    "id": "google/gemma-4-31b-it:free",
+    "name": "Google: Gemma 4 31B (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "image",
+      "text",
+      "video"
+    ],
+    "tasks": [
+      "conversational",
+      "reasoning"
+    ],
+    "architecture": "text+image+video->text",
+    "benchmarks": {
+      "design_arena": [],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 43.4,
+        "agentic_index": 6.8
+      }
+    },
+    "score_hint": 0.5800000000000001,
+    "raw": {
+      "id": "google/gemma-4-31b-it:free",
+      "canonical_slug": "google/gemma-4-31b-it-20260402",
+      "hugging_face_id": "google/gemma-4-31B-it",
+      "name": "Google: Gemma 4 31B (free)",
+      "created": 1775148486,
+      "description": "Gemma 4 31B Instruct is Google DeepMind's 30.7B dense multimodal model supporting text and image input with text output. Features a 256K token context window, configurable thinking/reasoning mode, native function...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text+image+video->text",
+        "input_modalities": [
+          "image",
+          "text",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Gemma",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 64,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/google/gemma-4-31b-it-20260402/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 43.4,
+          "agentic_index": 6.8
+        }
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": false
+      }
+    }
+  },
+  {
+    "id": "google/gemma-4-26b-a4b-it:free",
+    "name": "Google: Gemma 4 26B A4B  (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "image",
+      "text",
+      "video"
+    ],
+    "tasks": [
+      "conversational",
+      "reasoning"
+    ],
+    "architecture": "text+image+video->text",
+    "benchmarks": {
+      "design_arena": [],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 39.3,
+        "agentic_index": null
+      }
+    },
+    "score_hint": 0.42500000000000004,
+    "raw": {
+      "id": "google/gemma-4-26b-a4b-it:free",
+      "canonical_slug": "google/gemma-4-26b-a4b-it-20260403",
+      "hugging_face_id": "google/gemma-4-26B-A4B-it",
+      "name": "Google: Gemma 4 26B A4B  (free)",
+      "created": 1775227989,
+      "description": "Gemma 4 26B A4B IT is an instruction-tuned Mixture-of-Experts (MoE) model from Google DeepMind. Despite 25.2B total parameters, only 3.8B activate per token during inference \u2014 delivering near-31B quality at...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text+image+video->text",
+        "input_modalities": [
+          "image",
+          "text",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Gemma",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 64
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/google/gemma-4-26b-a4b-it-20260403/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 39.3,
+          "agentic_index": null
+        }
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": false
+      }
+    }
+  },
+  {
+    "id": "minimax/minimax-m2.7:free",
+    "name": "MiniMax: MiniMax M2.7 (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 196608,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {
+      "design_arena": [
+        {
+          "arena": "models",
+          "category": "3d",
+          "elo": 1231,
+          "win_rate": 50.5,
+          "rank": 39
+        },
+        {
+          "arena": "models",
+          "category": "asciiart",
+          "elo": 1165,
+          "win_rate": 47.5,
+          "rank": 36
+        },
+        {
+          "arena": "models",
+          "category": "codecategories",
+          "elo": 1251,
+          "win_rate": 52,
+          "rank": 36
+        },
+        {
+          "arena": "models",
+          "category": "dataviz",
+          "elo": 1253,
+          "win_rate": 52.8,
+          "rank": 31
+        },
+        {
+          "arena": "models",
+          "category": "gamedev",
+          "elo": 1237,
+          "win_rate": 51.4,
+          "rank": 38
+        },
+        {
+          "arena": "models",
+          "category": "svg",
+          "elo": 1173,
+          "win_rate": 48.9,
+          "rank": 44
+        },
+        {
+          "arena": "models",
+          "category": "uicomponent",
+          "elo": 1233,
+          "win_rate": 49.4,
+          "rank": 41
+        },
+        {
+          "arena": "models",
+          "category": "website",
+          "elo": 1258,
+          "win_rate": 52.5,
+          "rank": 34
+        }
+      ],
+      "artificial_analysis": {
+        "intelligence_index": null,
+        "coding_index": 52.6,
+        "agentic_index": null
+      }
+    },
+    "score_hint": 0.86,
+    "raw": {
+      "id": "minimax/minimax-m2.7:free",
+      "canonical_slug": "minimax/minimax-m2.7-20260318",
+      "hugging_face_id": "MiniMaxAI/MiniMax-M2.7",
+      "name": "MiniMax: MiniMax M2.7 (free)",
+      "created": 1773836697,
+      "description": "MiniMax-M2.7 is a next-generation large language model designed for autonomous, real-world productivity and continuous improvement. Built to actively participate in its own evolution, M2.7 integrates advanced agentic capabilities through multi-agent...",
+      "context_length": 196608,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 196608,
+        "max_completion_tokens": 176947,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/minimax/minimax-m2.7-20260318/endpoints"
+      },
+      "benchmarks": {
+        "design_arena": [
+          {
+            "arena": "models",
+            "category": "3d",
+            "elo": 1231,
+            "win_rate": 50.5,
+            "rank": 39
+          },
+          {
+            "arena": "models",
+            "category": "asciiart",
+            "elo": 1165,
+            "win_rate": 47.5,
+            "rank": 36
+          },
+          {
+            "arena": "models",
+            "category": "codecategories",
+            "elo": 1251,
+            "win_rate": 52,
+            "rank": 36
+          },
+          {
+            "arena": "models",
+            "category": "dataviz",
+            "elo": 1253,
+            "win_rate": 52.8,
+            "rank": 31
+          },
+          {
+            "arena": "models",
+            "category": "gamedev",
+            "elo": 1237,
+            "win_rate": 51.4,
+            "rank": 38
+          },
+          {
+            "arena": "models",
+            "category": "svg",
+            "elo": 1173,
+            "win_rate": 48.9,
+            "rank": 44
+          },
+          {
+            "arena": "models",
+            "category": "uicomponent",
+            "elo": 1233,
+            "win_rate": 49.4,
+            "rank": 41
+          },
+          {
+            "arena": "models",
+            "category": "website",
+            "elo": 1258,
+            "win_rate": 52.5,
+            "rank": 34
+          }
+        ],
+        "artificial_analysis": {
+          "intelligence_index": null,
+          "coding_index": 52.6,
+          "agentic_index": null
+        }
+      },
+      "reasoning": {
+        "mandatory": true
+      }
+    }
+  },
+  {
+    "id": "inclusionai/ling-3.0-flash-sante:free",
+    "name": "inclusionAI: Ling 3.0 Flash Sante (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 262144,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "conversational"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {},
+    "score_hint": 0.5549999999999999,
+    "raw": {
+      "id": "inclusionai/ling-3.0-flash-sante:free",
+      "canonical_slug": "inclusionai/ling-3.0-flash-sante-20260904",
+      "hugging_face_id": null,
+      "name": "inclusionAI: Ling 3.0 Flash Sante (free)",
+      "created": 1788545946,
+      "description": "Ling 3.0 Flash Sante is a health and medicine-focused mixture-of-experts model from InclusionAI, built on Ling 3.0 Flash with 5.1B active parameters out of 124B total. It is designed for...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logprobs",
+        "max_tokens",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "seed",
+        "stop",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/inclusionai/ling-3.0-flash-sante-20260904/endpoints"
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true
+      }
+    }
+  },
+  {
+    "id": "liquid/lfm-2.5-2.6b:free",
+    "name": "LiquidAI: LFM2.5-2.6B (free)",
+    "provider": "openrouter",
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "context_length": 65536,
+    "modalities": [
+      "text"
+    ],
+    "tasks": [
+      "agentic",
+      "coding",
+      "reasoning"
+    ],
+    "architecture": "text->text",
+    "benchmarks": {},
+    "score_hint": 0.265,
+    "raw": {
+      "id": "liquid/lfm-2.5-2.6b:free",
+      "canonical_slug": "liquid/lfm-2.5-2.6b-20260811",
+      "hugging_face_id": "LiquidAI/LFM2.5-2.6B",
+      "name": "LiquidAI: LFM2.5-2.6B (free)",
+      "created": 1786470519,
+      "description": "LFM2.5-2.6B is a compact reasoning model from Liquid AI. It is suited for agent workflows, data extraction, RAG, and long-context processing. Liquid advises against using it for agentic coding or...",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 65536,
+        "max_completion_tokens": 8192,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logprobs",
+        "max_completion_tokens",
+        "max_tokens",
+        "min_p",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 0.1,
+        "top_k": 50,
+        "repetition_penalty": 1.1
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/liquid/lfm-2.5-2.6b-20260811/endpoints"
+      },
+      "reasoning": {
+        "mandatory": true
+      }
+    }
+  }
+]
