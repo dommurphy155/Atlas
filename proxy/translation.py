@@ -1589,6 +1589,12 @@ def openai_response_to_anthropic(data: Dict[str, Any], *, rid: str = "") -> Dict
     choice = (data.get("choices") or [{}])[0]
     msg = choice.get("message") or {}
     content_str = msg.get("content") or ""
+    reasoning_str = msg.get("reasoning_content") or ""
+    # Some upstream models (notably NVIDIA reasoning models) emit
+    # content: None and put the actual answer in reasoning_content. The
+    # Anthropic SDK expects a non-empty content array, so fall back.
+    if not content_str and reasoning_str:
+        content_str = reasoning_str
     tool_calls = msg.get("tool_calls") or []
 
     content_blocks: List[Dict[str, Any]] = []
@@ -1647,14 +1653,13 @@ def openai_sse_to_anthropic_sse(
     out: List[Tuple[str, Optional[Dict]]] = []
 
     if state is None:
-        state = {
-            "text_open": False,
-            "text_index": -1,
-            "thinking_open": False,
-            "thinking_index": -1,
-            "next_index": 0,
-            "tool_blocks": {},
-        }
+        state = {}
+    state.setdefault("text_open", False)
+    state.setdefault("text_index", -1)
+    state.setdefault("thinking_open", False)
+    state.setdefault("thinking_index", -1)
+    state.setdefault("next_index", 0)
+    state.setdefault("tool_blocks", {})
 
     def _ensure_thinking() -> int:
         if not state["thinking_open"]:

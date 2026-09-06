@@ -220,8 +220,9 @@ def _is_content_sse_frame(frame: bytes) -> bool:
         delta = obj.get("delta") or {}
         dt = delta.get("type", "")
         # text_delta carries visible text; input_json_delta carries
-        # partial tool-call arguments — both are assistant content.
-        return dt in ("text_delta", "input_json_delta")
+        # partial tool-call arguments; thinking_delta carries the model's
+        # reasoning trace — all three are assistant-side content.
+        return dt in ("text_delta", "input_json_delta", "thinking_delta")
     if etype == "content_block_start":
         block = obj.get("content_block") or {}
         bt = block.get("type", "")
