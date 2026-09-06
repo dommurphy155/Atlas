@@ -247,19 +247,21 @@ def _detect_env_inline():
 # HARNESS INSTALL — verified against current official docs (2026)
 # ===========================================================================
 
-def _install_claude_code() -> bool:
-    """Install Claude Code with Anthropic's native installer and verify it."""
+def _start_claude_code_install():
+    """Start Claude Code installation in the background.
+
+    Returns the subprocess handle and installation environment.
+    The caller must wait for completion with _finish_claude_code_install().
+    """
     install_dir = Path.home() / ".local" / "bin"
     install_dir.mkdir(parents=True, exist_ok=True)
 
     if shutil.which("curl") is None:
         CONSOLE.print("  [red]✗ curl is required to install Claude Code[/red]")
-        return False
+        return None
 
     env = os.environ.copy()
     env["PATH"] = f"{install_dir}:{env.get('PATH', '')}"
-
-    CONSOLE.print("  Installing Claude Code...")
 
     try:
         process = subprocess.Popen(
@@ -268,26 +270,37 @@ def _install_claude_code() -> bool:
                 "-c",
                 "curl -fsSL https://claude.ai/install.sh | bash",
             ],
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             env=env,
         )
-
-        try:
-            stdout, stderr = process.communicate(timeout=300)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            stdout, stderr = process.communicate()
-            CONSOLE.print(
-                "  [red]✗ Claude Code installation timed out "
-                "after 5 minutes[/red]"
-            )
-            return False
-
     except OSError as exc:
         CONSOLE.print(
             f"  [red]✗ Failed to start Claude Code installer: {exc}[/red]"
+        )
+        return None
+
+    return process, env, install_dir
+
+
+def _finish_claude_code_install(state) -> bool:
+    """Wait for background Claude installation and fully verify it."""
+    if state is None:
+        return False
+
+    process, env, install_dir = state
+
+    CONSOLE.print("  Checking Claude Code installation...")
+
+    try:
+        _, stderr = process.communicate(timeout=300)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        _, stderr = process.communicate()
+
+        CONSOLE.print(
+            "  [red]✗ Claude Code installation timed out[/red]"
         )
         return False
 
@@ -302,31 +315,20 @@ def _install_claude_code() -> bool:
 
         return False
 
-    # Native installer normally places the executable here.
-    candidates = [
-        install_dir / "claude",
-        Path.home() / ".local" / "bin" / "claude",
-    ]
+    claude_path = install_dir / "claude"
 
-    claude_path = next(
-        (path for path in candidates if path.is_file()),
-        None,
-    )
-
-    # Also allow the installer to choose another PATH location.
-    if claude_path is None:
+    if not claude_path.is_file():
         resolved = shutil.which("claude", path=env["PATH"])
         if resolved:
             claude_path = Path(resolved)
 
-    if claude_path is None:
+    if not claude_path.is_file():
         CONSOLE.print(
-            "  [red]✗ Installer completed but claude "
-            "was not found[/red]"
+            "  [red]✗ Claude Code installer finished but "
+            "the executable was not found[/red]"
         )
         return False
 
-    # A file existing is not enough — actually execute it.
     try:
         verify = subprocess.run(
             [str(claude_path), "--version"],
@@ -335,14 +337,9 @@ def _install_claude_code() -> bool:
             timeout=30,
             env=env,
         )
-    except subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         CONSOLE.print(
-            "  [red]✗ Claude Code verification timed out[/red]"
-        )
-        return False
-    except OSError as exc:
-        CONSOLE.print(
-            f"  [red]✗ Claude Code could not be executed: {exc}[/red]"
+            f"  [red]✗ Claude Code verification failed: {exc}[/red]"
         )
         return False
 
@@ -357,16 +354,29 @@ def _install_claude_code() -> bool:
 
         return False
 
-    # Make the new binary available to the current wizard process.
     os.environ["PATH"] = env["PATH"]
 
     version = (verify.stdout or "").strip()
     version = version.splitlines()[-1] if version else "version unknown"
 
-    CONSOLE.print(f"  [green]✓ Claude Code verified: {version}[/green]")
-    CONSOLE.print(f"  [dim]Executable: {claude_path}[/dim]")
+    CONSOLE.print(
+        f"  [green]✓ Claude Code verified: {version}[/green]"
+    )
+    CONSOLE.print(
+        f"  [dim]Executable: {claude_path}[/dim]"
+    )
 
     return True
+
+
+def _install_claude_code() -> bool:
+    """Install Claude Code and wait until it is fully verified."""
+    state = _start_claude_code_install()
+
+    if state is None:
+        return False
+
+    return _finish_claude_code_install(state)
 
 
 def _install_codex() -> bool:
@@ -1101,12 +1111,30 @@ def run_wizard(dry_run: bool = False) -> int:
     # ---- 3. Detect/install harness ----
     already = shutil.which(harness.bin)
     harness_ready = bool(already)
+    claude_install_state = None
 
     if already:
         CONSOLE.print(_g(f"✓ {harness.label} detected at {already}"))
+
     elif dry_run:
-        CONSOLE.print(_dim(f"[harness] dry-run — would install {harness.label}"))
-        harness_ready = False
+        CONSOLE.print(
+            _dim(f"[harness] dry-run — would install {harness.label}")
+        )
+
+    elif harness.id == "claude" and detect_os() in ("linux", "macos"):
+        # Claude installation runs independently while the rest of Atlas
+        # setup continues. It is NOT configured until final verification.
+        claude_install_state = _start_claude_code_install()
+
+        if claude_install_state is not None:
+            CONSOLE.print(
+                _g("✓ Claude Code installation started in background")
+            )
+        else:
+            CONSOLE.print(
+                _y("⚠ Claude Code installation could not be started")
+            )
+
     else:
         with Live(
             Spinner("dots", text=Text("")),
@@ -1126,33 +1154,17 @@ def run_wizard(dry_run: bool = False) -> int:
 
             if install_ok and shutil.which(harness.bin):
                 harness_ready = True
-                live.update(_g(f"✓ {harness.label} installed and verified"))
-            elif install_ok:
-                live.update(_r(
-                    f"✗ {harness.label} installed but executable "
-                    f"{harness.bin} was not found"
-                ))
-            else:
-                live.update(_r(f"✗ {harness.label} installation failed"))
-
-        if not harness_ready:
-            CONSOLE.print(
-                _y(
-                    f"⚠ {harness.label} is unavailable — "
-                    "skipping harness configuration"
+                live.update(
+                    _g(f"✓ {harness.label} installed and verified")
                 )
-            )
+            else:
+                live.update(
+                    _r(f"✗ {harness.label} installation failed")
+                )
 
-    # Only configure a harness that was already present or successfully
-    # installed and verified. Never write harness configuration after failure.
-    if harness_ready:
-        configure = harness.configure
-        if configure:
-            configure()
-    else:
-        CONSOLE.print(
-            _dim(f"[harness] {harness.label} configuration skipped")
-        )
+    # Claude is deliberately NOT configured here.
+    # Its installer is finalized near the end of the wizard.
+
 
     # ---- 4. Pick provider + keys ----
     provider = _pick_provider()
@@ -1184,6 +1196,48 @@ def run_wizard(dry_run: bool = False) -> int:
     else:
         ok, msg = harness.configure(base_url, dummy_key)
         CONSOLE.print(_check(ok, f"Configured {harness.label}: {msg}"))
+
+    # ---- Finalize Claude Code installation ----
+    if harness.id == "claude" and claude_install_state is not None:
+        with Live(
+            Spinner("dots", text=Text("")),
+            console=CONSOLE,
+            transient=True,
+        ) as live:
+            live.update(_c("Finishing Claude Code installation..."))
+
+            harness_ready = _finish_claude_code_install(
+                claude_install_state
+            )
+
+            if harness_ready:
+                live.update(_g("✓ Claude Code fully installed and verified"))
+            else:
+                live.update(_r("✗ Claude Code installation failed"))
+
+    # Configure Claude ONLY after installation has completed and passed
+    # executable verification.
+    if harness.id == "claude" and harness_ready:
+        base_url = _proxy_base_url()
+        dummy_key = "atlas"
+
+        try:
+            harness.configure(base_url, dummy_key)
+            CONSOLE.print(
+                _g("✓ Claude Code configured for Atlas")
+            )
+        except Exception as exc:
+            CONSOLE.print(
+                _r(f"✗ Claude Code configuration failed: {exc}")
+            )
+
+    elif harness.id == "claude" and not harness_ready:
+        CONSOLE.print(
+            _y(
+                "⚠ Claude Code is not fully installed — "
+                "configuration skipped"
+            )
+        )
 
     # ---- 6. Verify everything ----
     CONSOLE.print("")
