@@ -248,56 +248,125 @@ def _detect_env_inline():
 # ===========================================================================
 
 def _install_claude_code() -> bool:
-    """Claude Code — official npm package.
+    """Install Claude Code with Anthropic's native installer and verify it."""
+    install_dir = Path.home() / ".local" / "bin"
+    install_dir.mkdir(parents=True, exist_ok=True)
 
-    Source: https://code.claude.com/docs/en/setup (canonical install command).
-    Idempotent: re-running is fast if already installed.
-
-    Common gotcha: `npm install -g` puts `claude` into the npm prefix's
-    `bin/` dir, which is often NOT on a fresh Ubuntu user's PATH. We
-    detect the actual install location and surface a clear warning if
-    the binary landed somewhere that won't be found by `claude` later.
-    """
-    if shutil.which("npm") is None:
+    if shutil.which("curl") is None:
+        CONSOLE.print("  [red]✗ curl is required to install Claude Code[/red]")
         return False
 
-    r = subprocess.run(
-        ["npm", "install", "-g", "@anthropic-ai/claude-code"],
-        capture_output=True, text=True, timeout=300,
+    env = os.environ.copy()
+    env["PATH"] = f"{install_dir}:{env.get('PATH', '')}"
+
+    CONSOLE.print("  Installing Claude Code...")
+
+    try:
+        process = subprocess.Popen(
+            [
+                "bash",
+                "-c",
+                "curl -fsSL https://claude.ai/install.sh | bash",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+
+        try:
+            stdout, stderr = process.communicate(timeout=300)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            CONSOLE.print(
+                "  [red]✗ Claude Code installation timed out "
+                "after 5 minutes[/red]"
+            )
+            return False
+
+    except OSError as exc:
+        CONSOLE.print(
+            f"  [red]✗ Failed to start Claude Code installer: {exc}[/red]"
+        )
+        return False
+
+    if process.returncode != 0:
+        CONSOLE.print(
+            f"  [red]✗ Claude Code installer failed "
+            f"(exit {process.returncode})[/red]"
+        )
+
+        for line in (stderr or "").strip().splitlines()[-8:]:
+            CONSOLE.print(f"  [red]{line}[/red]")
+
+        return False
+
+    # Native installer normally places the executable here.
+    candidates = [
+        install_dir / "claude",
+        Path.home() / ".local" / "bin" / "claude",
+    ]
+
+    claude_path = next(
+        (path for path in candidates if path.is_file()),
+        None,
     )
-    if r.returncode != 0:
-        # Surface npm's actual error in the installer's own log so the
-        # operator doesn't have to re-run with --verbose.
-        stderr_tail = (r.stderr or "").strip().splitlines()[-5:]
-        for line in stderr_tail:
-            CONSOLE.print(f"  [npm] {line}")
+
+    # Also allow the installer to choose another PATH location.
+    if claude_path is None:
+        resolved = shutil.which("claude", path=env["PATH"])
+        if resolved:
+            claude_path = Path(resolved)
+
+    if claude_path is None:
+        CONSOLE.print(
+            "  [red]✗ Installer completed but claude "
+            "was not found[/red]"
+        )
         return False
 
-    # npm -g succeeded — now find where claude actually landed.
-    # shutil.which checks PATH; npm prefix may be outside it.
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        # Try the npm global prefix bin/ dir.
-        prefix = subprocess.run(
-            ["npm", "config", "get", "prefix"],
-            capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        if prefix:
-            candidate = Path(prefix) / "bin" / "claude"
-            if candidate.exists():
-                claude_path = str(candidate)
-                # npm global bin not on PATH — warn the operator clearly.
-                bin_dir = str(candidate.parent)
-                CONSOLE.print(
-                    f"  [yellow]⚠ claude installed at {claude_path}[/yellow]"
-                )
-                CONSOLE.print(
-                    f"  [yellow]  but {bin_dir} is not on your PATH.[/yellow]"
-                )
-                CONSOLE.print(
-                    f"  [yellow]  add it:  export PATH=\"{bin_dir}:$PATH\"[/yellow]"
-                )
-    return claude_path is not None
+    # A file existing is not enough — actually execute it.
+    try:
+        verify = subprocess.run(
+            [str(claude_path), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        CONSOLE.print(
+            "  [red]✗ Claude Code verification timed out[/red]"
+        )
+        return False
+    except OSError as exc:
+        CONSOLE.print(
+            f"  [red]✗ Claude Code could not be executed: {exc}[/red]"
+        )
+        return False
+
+    if verify.returncode != 0:
+        CONSOLE.print(
+            f"  [red]✗ Claude Code failed verification "
+            f"(exit {verify.returncode})[/red]"
+        )
+
+        for line in (verify.stderr or "").strip().splitlines()[-5:]:
+            CONSOLE.print(f"  [red]{line}[/red]")
+
+        return False
+
+    # Make the new binary available to the current wizard process.
+    os.environ["PATH"] = env["PATH"]
+
+    version = (verify.stdout or "").strip()
+    version = version.splitlines()[-1] if version else "version unknown"
+
+    CONSOLE.print(f"  [green]✓ Claude Code verified: {version}[/green]")
+    CONSOLE.print(f"  [dim]Executable: {claude_path}[/dim]")
+
+    return True
 
 
 def _install_codex() -> bool:
@@ -1031,24 +1100,59 @@ def run_wizard(dry_run: bool = False) -> int:
 
     # ---- 3. Detect/install harness ----
     already = shutil.which(harness.bin)
+    harness_ready = bool(already)
+
     if already:
         CONSOLE.print(_g(f"✓ {harness.label} detected at {already}"))
+    elif dry_run:
+        CONSOLE.print(_dim(f"[harness] dry-run — would install {harness.label}"))
+        harness_ready = False
     else:
-        if dry_run:
-            CONSOLE.print(_dim(f"[harness] dry-run — would install {harness.label}"))
-        else:
-            with Live(Spinner("dots", text=Text("")), console=CONSOLE, transient=True) as live:
-                live.update(_c(f"Installing {harness.label}..."))
-                os_name = detect_os()
-                installer = {
-                    "linux": harness.install_linux,
-                    "macos": harness.install_macos,
-                    "windows": harness.install_windows,
-                }.get(os_name, harness.install_linux)
-                installer()
-                live.update(_g(f"{harness.label} install attempted"))
-            if not shutil.which(harness.bin):
-                CONSOLE.print(_y(f"⚠ {harness.bin} not on PATH after install — continuing"))
+        with Live(
+            Spinner("dots", text=Text("")),
+            console=CONSOLE,
+            transient=True,
+        ) as live:
+            live.update(_c(f"Installing {harness.label}..."))
+
+            os_name = detect_os()
+            installer = {
+                "linux": harness.install_linux,
+                "macos": harness.install_macos,
+                "windows": harness.install_windows,
+            }.get(os_name, harness.install_linux)
+
+            install_ok = installer()
+
+            if install_ok and shutil.which(harness.bin):
+                harness_ready = True
+                live.update(_g(f"✓ {harness.label} installed and verified"))
+            elif install_ok:
+                live.update(_r(
+                    f"✗ {harness.label} installed but executable "
+                    f"{harness.bin} was not found"
+                ))
+            else:
+                live.update(_r(f"✗ {harness.label} installation failed"))
+
+        if not harness_ready:
+            CONSOLE.print(
+                _y(
+                    f"⚠ {harness.label} is unavailable — "
+                    "skipping harness configuration"
+                )
+            )
+
+    # Only configure a harness that was already present or successfully
+    # installed and verified. Never write harness configuration after failure.
+    if harness_ready:
+        configure = harness.configure
+        if configure:
+            configure()
+    else:
+        CONSOLE.print(
+            _dim(f"[harness] {harness.label} configuration skipped")
+        )
 
     # ---- 4. Pick provider + keys ----
     provider = _pick_provider()
