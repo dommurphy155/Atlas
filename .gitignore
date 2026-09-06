@@ -1,40 +1,94 @@
+# ─── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Virtual envs
+# ─── Virtual envs ─────────────────────────────────────────────────────────────
 .venv/
 venv/
 env/
 
-# Proxy runtime artefacts
+# ─── Secrets & env files ──────────────────────────────────────────────────────
+# Never commit credentials. `.env.example` is the only exception — it is
+# the documentation template and contains no real values.
+.env
+.env.*
+!.env.example
+
+# ─── Atlas runtime artefacts ──────────────────────────────────────────────────
+# Proxy logs
 proxy/logs/
+*.log
+
+# API key files (real keys live here at runtime, must never be committed)
 data/openrouter_data/openroute_keys.txt
 data/openrouter_data/openroute_keys.txt.tmp
 data/huggingface_data/hf_keys.txt
 data/huggingface_data/hf_keys.txt.tmp
 data/huggingface_data/dead_hf_keys.txt
+
+# Runtime state
 data/proxy_data/runtime_provider.json
+
+# Captured payloads
 data/payloads/
 
-# Env / secrets — never commit
-.env
-.env.*
-!.env.example
+# Model discovery cache (regenerated on demand)
+.cache/
 
-# Editor / OS
+# User preferences (favourites, etc.)
+.atlas_preferences.json
+
+# ─── Node / pnpm / JS toolchains ─────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+.pnp.*
+
+# ─── Browser / Playwright / Camoufox / CDP ────────────────────────────────────
+playwright-report/
+test-results/
+.playwright/
+.cdp/
+.camoufox/
+chrome_profile/
+firefox_profile/
+*.har
+*.zip
+*.crx
+*.xpi
+
+# ─── Editors / IDEs / OS ──────────────────────────────────────────────────────
 .vscode/
 .idea/
-.DS_Store
 *.swp
+*.swo
 *~
+.DS_Store
+Thumbs.db
+.cache/
 
-# Build / dist
+# ─── Build / dist ─────────────────────────────────────────────────────────────
 build/
 dist/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/.cache/
-.atlas_preferences.json
+*.spec
+
+# ─── Session-tracking / external tool output ──────────────────────────────────
+# Files emitted by development tooling (e.g. session-summary hooks) — not part
+# of the project.
+.plugin-config/
+.session-summary.md
+*.plugin-config/
+
+# ─── Local databases / state files ───────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.pid
+*.sock
