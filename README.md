@@ -13,6 +13,12 @@ If you have a working key on the upstream, Atlas just works. If you don't,
 Atlas's interactive model picker tells you which models are actually free
 right now and switches the proxy to one of them in a single command.
 
+---
+
+**Quick links:** [Install](#installation) · [Providers](#supported-providers) · [Harnesses](#supported-harnesses) · [Configuration](#configuration) · [`atlas switch`](#switching-providers-and-models) · [Troubleshooting](#troubleshooting) · [Architecture](#how-the-architecture-works) · [Security](#security)
+
+---
+
 ## What Atlas does
 
 - **Provider aggregation.** A single OpenAI-compatible endpoint
@@ -95,28 +101,76 @@ The proxy is plain FastAPI. The CLI (`atlas`) is plain Python with `rich`.
 
 ## Requirements
 
-- Python 3.11+ (the proxy itself; the CLI works on 3.12+).
+- **Python 3.11+** (the proxy itself; the CLI works on 3.12+)
 - `pip install -r requirements.txt` (FastAPI, uvicorn, httpx, orjson,
-  rich, pydantic).
+  rich, pydantic)
 - A working OpenRouter or Hugging Face API key (for actually routing
   traffic). The model picker works without one.
 
 ## Installation
 
+Atlas is a Python project with a bash installer. It runs natively on Linux
+and macOS, and on Windows via the cross-platform runtime layer
+(`atlas/bin/runtime.py`) which auto-detects the best fallback (tmux-equivalent
+→ nohup-equivalent → manual).
+
+### Prerequisites
+
+- **Python 3.11+**
+- **Git**
+- **Linux:** systemd (system or user mode) **or** tmux
+- **macOS:** tmux (`brew install tmux`) or just leave it — the runtime
+  layer picks the right fallback automatically
+- **Windows:** one of `tmux`, `psmux`, `tmuxw`, `lumux`, `wmux`, or
+  `qscreen` on `PATH` (for detached operation). Foreground works
+  without any of these.
+
+### One-line install — Linux / macOS
+
 ```bash
 git clone https://github.com/dommurphy155/Atlas.git
 cd Atlas
-./setup/install.sh           # systemd unit, venv, CLI symlink
-# or interactively:
-atlas install
+./setup/install.sh
 ```
 
-The installer:
-1. Creates `.venv/` and installs requirements.
-2. Writes a systemd unit (system or `--user` scope).
-3. Symlinks `atlas` (or `atlas` — picked at install time) to
-   `atlas/bin/atlas` in your PATH.
-4. Optionally walks you through harness configuration and smoke tests.
+Non-interactive equivalent (user-scope systemd, no harness setup):
+
+```bash
+./setup/install.sh --user
+```
+
+### One-line install — Windows (PowerShell)
+
+```powershell
+git clone https://github.com/dommurphy155/Atlas.git
+cd Atlas
+py -3.11 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m proxy.main
+```
+
+The Windows path skips the bash installer and the systemd unit; the proxy
+runs as a foreground process (or under a tmux-equivalent for detachment).
+
+### What the installer does
+
+1. Creates `.venv/` and installs `requirements.txt`.
+2. Writes a systemd unit (system scope when root, `--user` otherwise) and
+   enables it.
+3. Symlinks `atlas` into your `PATH`:
+   - `/usr/local/bin/atlas2` (system scope, root)
+   - `~/.local/bin/atlas2` (user scope, with a hint if `~/.local/bin`
+     is not on `PATH`)
+4. Starts the proxy and prints a smoke-test summary.
+
+### After install
+
+```bash
+atlas2 status       # verify the proxy is up
+atlas2 doctor       # diagnose common issues
+atlas2 import-key sk-or-v1-...   # add an OpenRouter key
+atlas2 switch       # interactive model picker
+```
 
 ## Configuration
 
