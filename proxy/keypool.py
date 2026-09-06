@@ -402,6 +402,18 @@ class KeyPool:
                 len(self._retired),
             )
 
+    def get_key_string(self, index: int) -> str:
+        """Return the API key string for ``index``, or empty string if OOB.
+
+        Centralises the bounds check that callers used to repeat as
+        ``self.pool._keys[i].key if i < self.pool._n else ""``. Use this
+        from any site that needs to pass the key string to
+        ``retire_and_remove_hf_key()`` or log a key's prefix.
+        """
+        if 0 <= index < self._n:
+            return self._keys[index].key
+        return ""
+
     def is_key_retired(self, index: int) -> bool:
         """Check if a key index has been permanently retired."""
         return index in self._retired

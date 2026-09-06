@@ -351,6 +351,48 @@ class ProxyCore:
         base = min(2 ** attempt, 8.0)
         await asyncio.sleep(base + random.uniform(0.0, 0.5))
 
+    async def _maybe_retire_hf_key(
+        self,
+        key_idx: int,
+        status: int,
+        body: Optional[bytes],
+        request_id: str = "",
+        *,
+        frame_kind: Optional[str] = None,
+    ) -> bool:
+        """Permanently retire an HF key on 402/429/concurrency conditions.
+
+        Returns True if the key was retired (caller should not retry it).
+
+        ``frame_kind`` is set by mid-stream callers to restrict retirement
+        to the structured kinds the upstream explicitly flagged (rate_limit,
+        concurrency). Pre-stream callers pass ``frame_kind=None`` to retire
+        on either of the two body-classification conditions.
+        """
+        if self.provider != "huggingface":
+            return False
+        if frame_kind is not None:
+            # Mid-stream path — only retire on the kinds the proxy trusts.
+            if frame_kind not in ("rate_limit", "concurrency"):
+                return False
+            retire = True
+        else:
+            # Pre-stream path — inspect the body for known HF error shapes.
+            if not (is_hf_rate_limit_error(status, body) or is_hf_key_invalid(status, body)):
+                return False
+            retire = True
+        key_str = self.pool.get_key_string(key_idx)
+        if key_str:
+            added, _ = retire_and_remove_hf_key(key_str)
+            if added:
+                log.warning(
+                    "req=%s HF key permanently retired (status=%d, key_idx=%d, mid_stream=%s)",
+                    request_id, status, key_idx, frame_kind is not None,
+                )
+        await self.pool.retire_key(key_idx)
+        return True
+
+
     def _headers(
         self, key: str, extra: Optional[Dict[str, str]] = None
     ) -> Dict[str, str]:
@@ -474,18 +516,9 @@ class ProxyCore:
                     if status >= 400:
                         await self.pool.mark_error(key_idx, status)
                         # Check for HF permanent retirement conditions
-                        if self.provider == "huggingface":
-                            resp_body = resp.content
-                            if is_hf_rate_limit_error(status, resp_body) or is_hf_key_invalid(status, resp_body):
-                                key_str = self.pool._keys[key_idx].key if key_idx < self.pool._n else ""
-                                if key_str:
-                                    added, removed = retire_and_remove_hf_key(key_str)
-                                    if added:
-                                        log.warning(
-                                            "req=%s HF key permanently retired (status=%d, key_idx=%d)",
-                                            request_id, status, key_idx,
-                                        )
-                                await self.pool.retire_key(key_idx)
+                        await self._maybe_retire_hf_key(
+                            key_idx, status, resp.content, request_id,
+                        )
                     else:
                         await self.pool.mark_success(key_idx, latency_ms)
 
@@ -652,16 +685,9 @@ class ProxyCore:
             pl.trace(request_id).upstream(key_idx, status)  # logging-only
             if self.provider == "huggingface":
                 data = await upstream.aread()
-                if is_hf_rate_limit_error(status, data) or is_hf_key_invalid(status, data):
-                    key_str = self.pool._keys[key_idx].key if key_idx < self.pool._n else ""
-                    if key_str:
-                        added, removed = retire_and_remove_hf_key(key_str)
-                        if added:
-                            log.warning(
-                                "req=%s HF key permanently retired in stream (status=%d, key_idx=%d)",
-                                request_id, status, key_idx,
-                            )
-                    await self.pool.retire_key(key_idx)
+                await self._maybe_retire_hf_key(
+                    key_idx, status, data, request_id,
+                )
                 await upstream.aclose()
                 await self.pool.release(key_idx)
                 self._free_sem.release()
@@ -812,13 +838,13 @@ class ProxyCore:
                             except Exception:
                                 pass
                             # HF streaming rate-limit → permanent retirement
-                            if self.provider == "huggingface" and frame_error["kind"] in (
-                                "rate_limit", "concurrency"
-                            ):
-                                key_str = self.pool._keys[key_idx].key if key_idx < self.pool._n else ""
-                                if key_str:
-                                    retire_and_remove_hf_key(key_str)
-                                await self.pool.retire_key(key_idx)
+                            await self._maybe_retire_hf_key(
+                                key_idx,
+                                _KIND_TO_STATUS.get(frame_error["kind"], 502),
+                                None,
+                                request_id,
+                                frame_kind=frame_error["kind"],
+                            )
 
                             # Do NOT yield the raw error frame to the client — it
                             # confuses Anthropic/OpenAI SDKs (they parse it as a
@@ -1083,13 +1109,13 @@ class ProxyCore:
                             except Exception:
                                 pass
                             # HF streaming rate-limit → permanent retirement
-                            if self.provider == "huggingface" and frame_error["kind"] in (
-                                "rate_limit", "concurrency"
-                            ):
-                                key_str = self.pool._keys[key_idx].key if key_idx < self.pool._n else ""
-                                if key_str:
-                                    retire_and_remove_hf_key(key_str)
-                                await self.pool.retire_key(key_idx)
+                            await self._maybe_retire_hf_key(
+                                key_idx,
+                                _KIND_TO_STATUS.get(frame_error["kind"], 502),
+                                None,
+                                request_id,
+                                frame_kind=frame_error["kind"],
+                            )
 
                             # Do NOT yield the error frame — terminate the stream
                             # cleanly so the next request rotates off this key via
