@@ -255,7 +255,10 @@ install_systemd_user() {
         systemctl --user daemon-reload
         systemctl --user enable "$SERVICE_NAME.service" >/dev/null
         ok "enabled $SERVICE_NAME.service (user)"
-        info "start with:   systemctl --user start $SERVICE_NAME"
+
+        systemctl --user start "$SERVICE_NAME.service"
+        ok "started $SERVICE_NAME.service (user)"
+
         info "logs with:    journalctl --user -u $SERVICE_NAME -f"
     fi
 }
