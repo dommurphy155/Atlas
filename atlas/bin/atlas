@@ -269,7 +269,7 @@ def cmd_restart(args) -> int:
     provider = getattr(args, "provider", None)
     model = getattr(args, "model", None) or ""
     if provider:
-        section(f"Atlas proxy — restart [{provider}]")
+        section(f"Atlas proxy — restart [{provider}]" + (f" [{model}]" if model else ""))
         _write_runtime_provider(provider, model)
     else:
         section("Atlas proxy — restart")
@@ -277,6 +277,20 @@ def cmd_restart(args) -> int:
         return 1
     time.sleep(1)
     return 0 if service_action("start") else 1
+
+
+# "switch" — interactive model picker (replaces --provider/--model flags)
+def cmd_switch(args) -> int:
+    """Interactive provider + model switcher."""
+    sys.path.insert(0, str(REPO_ROOT / "atlas"))
+    try:
+        from bin.switch import cmd_switch as _switch_impl
+        return _switch_impl(args)
+    except Exception as e:
+        CONSOLE.print(red(f"switch failed: {e}"))
+        import traceback
+        CONSOLE.print(traceback.format_exc())
+        return 1
 
 
 def cmd_status(args) -> int:
@@ -537,6 +551,7 @@ SUBCOMMANDS = {
     "start":           cmd_start,
     "stop":            cmd_stop,
     "restart":         cmd_restart,
+    "switch":          cmd_switch,
     "status":          cmd_status,
     "st":              cmd_status,
     "logs":            cmd_logs,
@@ -601,9 +616,11 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 examples:
-  atlas start                          Start the proxy (systemd or run.sh)
+  atlas start                          Start the proxy
   atlas stop                           Stop the proxy
-  atlas restart --huggingface          Restart + switch to HF provider
+  atlas restart --openrouter minimax/mimax-m3:free  Restart + switch provider+model
+  atlas switch --nvidia                Restart + NVIDIA provider
+  atlas switch --huggingface --skip    Restart + HF (no model override)
   atlas install --dry-run              Preview the install without changes
   atlas uninstall --dry-run            Preview the removal without changes
   atlas import-key sk-or-v1-xxx        Append a single key to the key file
@@ -613,12 +630,21 @@ examples:
     )
     sub = p.add_subparsers(dest="command", metavar="<command>")
 
-    sp_restart = sub.add_parser("restart", help="Restart the proxy")
-    sp_restart.add_argument("--huggingface", action="store_const", const="huggingface", dest="provider",
-                            help="Switch to HuggingFace provider")
-    sp_restart.add_argument("--openrouter", action="store_const", const="openrouter", dest="provider",
-                            help="Switch to OpenRouter provider")
-    sp_restart.add_argument("--model", help="Override default model for next start")
+    # restart / switch — provider flags + positional model
+    for subparser_name, cmd_func in (("restart", cmd_restart), ("switch", cmd_switch)):
+        sp = sub.add_parser(subparser_name,
+                            help="Restart the proxy" if subparser_name == "restart" else "Switch provider + model")
+        sp.add_argument("--openrouter", action="store_const", const="openrouter", dest="provider",
+                         help="Switch to OpenRouter provider")
+        sp.add_argument("--nvidia", action="store_const", const="nvidia", dest="provider",
+                         help="Switch to NVIDIA provider")
+        sp.add_argument("--huggingface", action="store_const", const="huggingface", dest="provider",
+                         help="Switch to HuggingFace provider")
+        sp.add_argument("--skip", action="store_const", const="skip", dest="provider",
+                         help="Restart without a provider override")
+        sp.add_argument("model", nargs="?", default=None,
+                         help="Model to route through the provider (e.g. minimax/mimax-m3:free)")
+        sp.set_defaults(_atlas_cmd=cmd_func)
 
     # install / uninstall accept --dry-run
     sp_install = sub.add_parser("install", help="First-time setup (venv + systemd)")
@@ -657,28 +683,20 @@ def main() -> int:
     if sys.argv[1] in ("--version", "-v"):
         return cmd_version(None)
 
-    # Try exact match first
-    cmd = sys.argv[1]
-    handler = SUBCOMMANDS.get(cmd)
-
-    if handler is None:
-        # Fuzzy match
-        suggestion = _fuzzy_command(cmd)
-        if suggestion:
-            CONSOLE.print(yellow(f"Unknown command '{cmd}' — did you mean '{suggestion}'?"))
-            if Confirm.ask("Run it?", default=True):
-                sys.argv[1] = suggestion
-                cmd = suggestion
-                handler = SUBCOMMANDS[cmd]
-            else:
-                return 2
-        else:
-            CONSOLE.print(red(f"Unknown command: {cmd}"))
-            CONSOLE.print(dim("Run 'atlas --help' for the command list."))
-            return 2
-
     parser = build_parser()
     args = parser.parse_args(sys.argv[1:])
+    handler = getattr(args, "_atlas_cmd", None) or SUBCOMMANDS.get(args.command)
+    if handler is None and hasattr(args, "command"):
+        # Fuzzy match
+        suggestion = _fuzzy_command(args.command)
+        if suggestion:
+            CONSOLE.print(yellow(f"Unknown command '{args.command}' — did you mean '{suggestion}'?"))
+            if Confirm.ask("Run it?", default=True):
+                handler = SUBCOMMANDS[suggestion]
+    if handler is None:
+        CONSOLE.print(red(f"Unknown command: {sys.argv[1]}"))
+        CONSOLE.print(dim("Run 'atlas --help' for the command list."))
+        return 2
     try:
         return handler(args)
     except KeyboardInterrupt:
