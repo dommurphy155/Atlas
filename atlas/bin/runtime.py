@@ -233,6 +233,7 @@ class Runtime(Protocol):
     def status(self) -> tuple[bool, str]: ...
     def logs(self, follow: bool = True) -> int: ...
     def env_summary(self) -> dict: ...
+    def cleanup(self) -> None: ...
 
 
 # ---- systemd (system) -----------------------------------------------------
@@ -307,42 +308,20 @@ WantedBy=multi-user.target
         finally:
             tmp.unlink(missing_ok=True)
 
-    def install(self) -> tuple[bool, str]:
-        unit_dir = Path.home() / ".config" / "systemd" / "user"
-        unit_path = unit_dir / self.service_name
-
-        unit = f"""[Unit]
-Description=Atlas Proxy
-After=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory={self.repo_root}
-ExecStart={self.venv_py} -m proxy.main
-Restart=on-failure
-RestartSec=5
-EnvironmentFile=-{self.repo_root / ".env"}
-
-[Install]
-WantedBy=default.target
-"""
-
-        unit_dir.mkdir(parents=True, exist_ok=True)
-        unit_path.write_text(unit)
-
-        r = self._run("daemon-reload")
-        if r is None or r.returncode != 0:
-            return False, r.stderr.strip() if r else "systemctl --user daemon-reload failed"
-
-        r = self._run("enable", self.service_name)
-        if r is None or r.returncode != 0:
-            return False, r.stderr.strip() if r else "systemctl --user enable failed"
-
-        r = self._run("start", self.service_name)
-        if r is None or r.returncode != 0:
-            return False, r.stderr.strip() if r else "systemctl --user start failed"
-
-        return True, f"installed and started {self.service_name}"
+    def cleanup(self) -> None:
+        """Best-effort: stop + disable + remove the unit. Never raises."""
+        try:
+            self._run("disable", "--now", self.service_name)
+        except Exception:
+            pass
+        unit_path = Path("/etc/systemd/system") / self.service_name
+        if unit_path.exists():
+            install = self._sudo_prefix() + ["rm", "-f", str(unit_path)]
+            _run_quiet(install, timeout=5.0)
+        try:
+            self._run("daemon-reload")
+        except Exception:
+            pass
 
     def start(self) -> tuple[bool, str]:
         r = self._run("start", self.service_name)
@@ -397,6 +376,61 @@ class SystemdUserRuntime:
     def _run(self, *args: str) -> subprocess.CompletedProcess | None:
         cmd = ["systemctl", "--user", *args]
         return _run_quiet(cmd, timeout=10.0)
+
+    def install(self) -> tuple[bool, str]:
+        unit_dir = Path.home() / ".config" / "systemd" / "user"
+        unit_path = unit_dir / self.service_name
+
+        unit = f"""[Unit]
+Description=Atlas Proxy
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={self.repo_root}
+ExecStart={self.venv_py} -m proxy.main
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-{self.repo_root / ".env"}
+
+[Install]
+WantedBy=default.target
+"""
+
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        unit_path.write_text(unit)
+
+        r = self._run("daemon-reload")
+        if r is None or r.returncode != 0:
+            return False, r.stderr.strip() if r else "systemctl --user daemon-reload failed"
+
+        r = self._run("enable", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, r.stderr.strip() if r else "systemctl --user enable failed"
+
+        r = self._run("start", self.service_name)
+        if r is None or r.returncode != 0:
+            return False, r.stderr.strip() if r else "systemctl --user start failed"
+
+        return True, f"installed and started {self.service_name}"
+
+    def cleanup(self) -> None:
+        """Best-effort: stop + disable + remove the user unit. Never raises."""
+        try:
+            self._run("disable", "--now", self.service_name)
+        except Exception:
+            pass
+        unit_dir = Path.home() / ".config" / "systemd" / "user"
+        unit_path = unit_dir / self.service_name
+        if unit_path.exists():
+            try:
+                unit_path.unlink()
+            except OSError:
+                pass
+        try:
+            self._run("daemon-reload")
+        except Exception:
+            pass
 
     def start(self) -> tuple[bool, str]:
         r = self._run("start", self.service_name)
@@ -480,6 +514,13 @@ class TmuxRuntime:
         if r is None or r.returncode != 0:
             return False, (r.stderr.strip() if r else f"{self.tmux_bin} kill failed")
         return True, f"killed tmux session '{self.session}'"
+
+    def cleanup(self) -> None:
+        """Best-effort: kill the tmux session. Never raises."""
+        try:
+            self._run("kill-session", "-t", self.session)
+        except Exception:
+            pass
 
     def status(self) -> tuple[bool, str]:
         r = self._run("has-session", "-t", self.session)
@@ -604,6 +645,14 @@ class NohupRuntime:
         except (ValueError, OSError):
             return None
 
+    def cleanup(self) -> None:
+        """Best-effort: stop + remove pidfile. Never raises."""
+        try:
+            self.stop()
+        except Exception:
+            pass
+        self.pid_file.unlink(missing_ok=True)
+
     def env_summary(self) -> dict:
         return {
             "mode": "nohup",
@@ -640,6 +689,10 @@ class ManualRuntime:
     def logs(self, follow: bool = True) -> int:
         print("No supervisor to read logs from. Start the proxy manually to see its output.", file=sys.stderr)
         return 1
+
+    def cleanup(self) -> None:
+        """Nothing to clean up — manual mode owns no process."""
+        return None
 
     def env_summary(self) -> dict:
         return {"mode": "manual"}
@@ -698,31 +751,151 @@ def _runtime_paths(repo_root: Path, venv_py: Path):
 
 def install_runtime(repo_root: Path, venv_py: Path,
                    service_name: str) -> tuple[RuntimeMode, bool, str]:
-    """Detect, construct, install and persist the best runtime."""
+    """Detect, attempt, verify, fallback. Only persist a runtime after a
+    successful health check.
+
+    The flow is:
+      1. Detect the environment.
+      2. Build an ordered list of runtime candidates.
+      3. For each candidate: install (or start), then poll the proxy's
+         health endpoint with a short bounded budget.
+      4. If health succeeds: persist the choice and return.
+      5. If health fails: cleanup the candidate and try the next.
+      6. If every candidate fails: persist ``manual`` and return success
+         so the installer itself never fails on a runtime problem.
+    """
     env = detect_env()
-    mode = choose_mode(env)
-    runtime = build_runtime(mode, env, repo_root, venv_py, service_name)
+    candidates = _candidate_modes(env)
 
-    if mode == "manual":
+    last_message = "no runtime candidates available"
+    for mode in candidates:
+        runtime = build_runtime(mode, env, repo_root, venv_py, service_name)
+        installer = getattr(runtime, "install", None)
+        try:
+            ok, message = installer() if callable(installer) else runtime.start()
+        except Exception as exc:  # installer crashed — treat as failure
+            ok, message = False, f"{type(exc).__name__}: {exc}"
+
+        if not ok:
+            # Best-effort cleanup before falling back. Never raises.
+            try:
+                runtime.cleanup()
+            except Exception:
+                pass
+            last_message = f"{mode}: {message}"
+            continue
+
+        # Install/start succeeded — now verify the proxy is actually healthy.
+        healthy, health_msg = check_health(repo_root=repo_root)
+        if not healthy:
+            try:
+                runtime.cleanup()
+            except Exception:
+                pass
+            last_message = f"{mode}: {health_msg}"
+            continue
+
         save_runtime_choice(
-            repo_root, env, mode,
-            runtime.info.__dict__,
+            repo_root, env, mode, runtime.info.__dict__,
         )
-        return mode, True, "manual runtime selected"
+        return mode, True, health_msg or message
 
-    installer = getattr(runtime, "install", None)
-    if installer is None:
-        ok, message = runtime.start()
-    else:
-        ok, message = installer()
+    # Everything failed — record manual so the installer still completes.
+    manual_rt = build_runtime("manual", env, repo_root, venv_py, service_name)
+    save_runtime_choice(
+        repo_root, env, "manual", manual_rt.info.__dict__,
+    )
+    return "manual", True, (
+        f"no runtime worked ({last_message}); persisted manual mode"
+    )
 
-    if ok:
-        save_runtime_choice(
-            repo_root, env, mode,
-            runtime.info.__dict__,
-        )
 
-    return mode, ok, message
+# Health endpoint + bounded polling window. A few seconds is plenty for
+# uvicorn to bind; we don't want the installer sitting around for minutes.
+#
+# NOTE: the fork's default LISTEN_PORT is 8777 (prod lives on 8788).
+# We prefer reading it from proxy.config so we always check the right port;
+# a hard-coded constant is only used as a last-resort fallback.
+HEALTH_PORT_DEFAULT = 8777
+HEALTH_TIMEOUT_S = 6.0
+HEALTH_POLL_S = 0.25
+
+
+def _health_url(repo_root: Path) -> str:
+    """Resolve the actual proxy port for this repo from its config.
+
+    Reads LISTEN_PORT from `proxy/config.py` if the venv is importable,
+    otherwise falls back to the fork default (8777). Avoids the prod port
+    (8788) which is owned by a different atlas install.
+    """
+    port = HEALTH_PORT_DEFAULT
+    try:
+        sys.path.insert(0, str(repo_root))
+        from proxy.config import LISTEN_PORT  # type: ignore
+        port = int(LISTEN_PORT)
+    except Exception:
+        pass
+    return f"http://127.0.0.1:{port}/health"
+
+
+def check_health(timeout_s: float = HEALTH_TIMEOUT_S,
+                 url: str | None = None,
+                 repo_root: Path | None = None) -> tuple[bool, str]:
+    """Poll the proxy health endpoint with a short bounded budget.
+
+    Returns (True, "ok") on success or (False, reason) on timeout/error.
+    Uses urllib so we don't pull requests into the installer path.
+    """
+    import socket
+    import urllib.request
+    import urllib.error
+
+    if url is None:
+        if repo_root is None:
+            url = f"http://127.0.0.1:{HEALTH_PORT_DEFAULT}/health"
+        else:
+            url = _health_url(repo_root)
+
+    deadline = time.monotonic() + timeout_s
+    last_err = ""
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=0.5) as resp:
+                if 200 <= resp.status < 300:
+                    return True, f"health check passed ({url})"
+                last_err = f"status {resp.status}"
+        except (urllib.error.URLError, ConnectionError, OSError) as exc:
+            last_err = getattr(exc, "reason", None) or str(exc) or "unreachable"
+        except socket.timeout:
+            last_err = "timeout"
+        time.sleep(HEALTH_POLL_S)
+    return False, f"health check failed: {last_err or 'no response'} ({url})"
+
+
+def _candidate_modes(env: RuntimeEnv) -> list[RuntimeMode]:
+    """Build the ordered list of runtime candidates for this environment.
+
+    Linux:  systemd-system -> systemd-user -> tmux -> nohup
+    macOS:  tmux -> nohup
+    Other:  tmux -> nohup
+    Manual is always the final fallback (handled by the caller).
+    """
+    if env.os == "linux":
+        candidates: list[RuntimeMode] = []
+        if env.systemd_system_usable:
+            candidates.append("systemd")
+        if env.systemd_user_usable:
+            candidates.append("systemd-user")
+        if env.tmux_usable:
+            candidates.append("tmux")
+        if env.nohup_usable:
+            candidates.append("nohup")
+        return candidates
+    if env.tmux_usable:
+        return ["tmux"]
+    if env.nohup_usable:
+        return ["nohup"]
+    return []
 
 
 def build_runtime(mode: RuntimeMode, env: RuntimeEnv, repo_root: Path,
@@ -749,19 +922,45 @@ def get_runtime(repo_root: Path, venv_py: Path, service_name: str) -> Runtime:
     """Pick the active Runtime for subsequent commands.
 
     Strategy:
-      1. If `data/runtime.json` exists, honour its mode.
-      2. Otherwise (legacy install) — prefer systemd if the unit is alive,
-         otherwise nohup. This preserves existing installs unchanged.
+      1. If `data/runtime.json` exists AND the persisted mode is still
+         actually usable on this host, honour it.
+      2. Otherwise re-detect from the environment and pick the best
+         available mode (with ``manual`` as the last-resort fallback).
+
+    This is intentionally forgiving: a host that previously had
+    systemd-user but lost its user-bus between installs will not get
+    stuck trying to use a runtime that no longer exists.
     """
     persisted = load_runtime_choice(repo_root)
     env = detect_env()
+
     if persisted:
         mode = persisted.get("mode", "nohup")
-        return build_runtime(mode, env, repo_root, venv_py, service_name)
-    # Legacy fallback
-    if env.systemd_system_usable:
-        return build_runtime("systemd", env, repo_root, venv_py, service_name)
-    return build_runtime("nohup", env, repo_root, venv_py, service_name)
+        if _mode_usable(mode, env):
+            return build_runtime(mode, env, repo_root, venv_py, service_name)
+
+    # Re-detect from the live environment.
+    candidates = _candidate_modes(env)
+    for mode in candidates:
+        if _mode_usable(mode, env):
+            return build_runtime(mode, env, repo_root, venv_py, service_name)
+
+    return build_runtime("manual", env, repo_root, venv_py, service_name)
+
+
+def _mode_usable(mode: RuntimeMode, env: RuntimeEnv) -> bool:
+    """Is this mode actually usable on the current host right now?"""
+    if mode == "systemd":
+        return env.systemd_system_usable
+    if mode == "systemd-user":
+        return env.systemd_user_usable
+    if mode == "tmux":
+        return env.tmux_usable
+    if mode == "nohup":
+        return env.nohup_usable
+    if mode == "manual":
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
