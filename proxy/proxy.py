@@ -906,14 +906,20 @@ class ProxyCore:
                 stream_error_reason = "client_cancelled"
                 log.info("req=%s stream cancelled by client", request_id)
                 raise
-            except Exception as e:
+            except (httpx.RemoteProtocolError, httpx.TimeoutException, ConnectionError) as e:
+                # Other transport-layer failures the narrower catch above missed.
                 stream_error = True
-                stream_error_reason = f"mid_stream_error/{type(e).__name__}: {e}"
-                log.warning("req=%s stream mid-body error: %s", request_id, e)
+                stream_error_reason = f"transport_error/{type(e).__name__}: {e}"
+                log.warning("req=%s stream transport error: %s", request_id, e)
                 try:
                     await self.pool.mark_error(key_idx, 500)
                 except Exception:
                     pass
+            # NOTE: we deliberately do NOT catch arbitrary Exception here.
+            # A programming bug (KeyError, AttributeError, TypeError) should
+            # surface loudly rather than mark an upstream key as broken.
+            # Starlette's StreamingResponse machinery will translate the
+            # exception into a 500 for the client without poisoning the pool.
             finally:
                 # For is_messages (Anthropic-format) streams, always terminate
                 # with a clean message_stop if we haven't already. This applies
@@ -1162,14 +1168,20 @@ class ProxyCore:
                 stream_error_reason = "client_cancelled"
                 log.info("req=%s stream cancelled by client", request_id)
                 raise
-            except Exception as e:
+            except (httpx.RemoteProtocolError, httpx.TimeoutException, ConnectionError) as e:
+                # Other transport-layer failures the narrower catch above missed.
                 stream_error = True
-                stream_error_reason = f"mid_stream_error/{type(e).__name__}: {e}"
-                log.warning("req=%s stream mid-body error: %s", request_id, e)
+                stream_error_reason = f"transport_error/{type(e).__name__}: {e}"
+                log.warning("req=%s stream transport error: %s", request_id, e)
                 try:
                     await self.pool.mark_error(key_idx, 500)
                 except Exception:
                     pass
+            # NOTE: we deliberately do NOT catch arbitrary Exception here.
+            # A programming bug (KeyError, AttributeError, TypeError) should
+            # surface loudly rather than mark an upstream key as broken.
+            # Starlette's StreamingResponse machinery will translate the
+            # exception into a 500 for the client without poisoning the pool.
             finally:
                 if not stream_error:
                     await _quiet_cleanup(

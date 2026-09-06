@@ -1367,9 +1367,14 @@ def prepare_chat_body(body: Dict[str, Any]) -> Dict[str, Any]:
 
     # ----- tool_choice -----
     if "tool_choice" in body:
-        body["tool_choice"] = convert_tool_choice_anthropic_to_openai(
-            body["tool_choice"]
-        )
+        tc = body["tool_choice"]
+        # Fold disable_parallel_tool_use (Anthropic) into parallel_tool_calls
+        # (OpenAI). Without this, an Anthropic client that explicitly requests
+        # "no parallel tool calls" silently gets the OpenAI default of
+        # parallel_tool_calls=True.
+        if isinstance(tc, dict) and tc.get("disable_parallel_tool_use"):
+            body["parallel_tool_calls"] = False
+        body["tool_choice"] = convert_tool_choice_anthropic_to_openai(tc)
 
     # ----- messages (heuristic conversion) -----
     msgs = body.get("messages")
@@ -1798,4 +1803,38 @@ def openai_sse_to_anthropic_sse(
             "type": "message_stop",
         }))
     return out
+
+
+def promote_reasoning_to_content_in_chat_response(data: Dict[str, Any]) -> Dict[str, Any]:
+    """For OpenAI chat/completions responses where the model emitted
+    ``content: null`` and put the actual answer in ``reasoning_content``,
+    promote ``reasoning_content`` → ``content`` so OpenAI clients (which
+    ignore ``reasoning_content``) see a non-empty response instead of an
+    apparently-hung model.
+
+    Walks every choice's message in-place; returns the same dict for
+    chaining. This is the OpenAI-side counterpart of the Anthropic-side
+    fallback in ``openai_response_to_anthropic`` (which already does this
+    for /v1/messages).
+
+    Per the atlas-proxy-codebase skill: this function was stripped
+    2026-09-02 during the Codex/Responses-API stripdown. It is restored
+    here per the user's standing rule ("when a feature is stripped,
+    restore it at the original location with original shape").
+    """
+    if not isinstance(data, dict):
+        return data
+    for choice in data.get("choices") or []:
+        if not isinstance(choice, dict):
+            continue
+        msg = choice.get("message")
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        reasoning = msg.get("reasoning_content")
+        # Only promote when content is truly empty/null AND reasoning has
+        # something to show. If content already has text, leave it alone.
+        if (not content) and isinstance(reasoning, str) and reasoning:
+            msg["content"] = reasoning
+    return data
 

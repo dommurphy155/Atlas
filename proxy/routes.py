@@ -717,6 +717,29 @@ async def chat_completions(request: Request) -> Response:
         stream=stream,
         request_id=rid,
     )
+    # Non-streaming: promote reasoning_content → content for OpenAI clients
+    # when the model emitted content: null + reasoning_content: <text>.
+    # See translation.promote_reasoning_to_content_in_chat_response.
+    if not stream and isinstance(resp, Response):
+        try:
+            data = loads(resp.body)
+            if isinstance(data, dict):
+                from .translation import promote_reasoning_to_content_in_chat_response
+                promote_reasoning_to_content_in_chat_response(data)
+                new_body = dumps(data)
+                # Only swap if the body actually changed to avoid an
+                # unnecessary re-encode on every response.
+                if new_body != resp.body:
+                    return Response(
+                        content=new_body,
+                        status_code=resp.status_code,
+                        headers={k: v for k, v in resp.headers.items()
+                                if k.lower() != "content-length"},
+                        media_type=resp.headers.get("content-type", "application/json"),
+                    )
+        except Exception:
+            # If promotion fails for any reason, return the original body.
+            pass
     return resp
 
 @router.post("/v1/messages")

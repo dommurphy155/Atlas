@@ -191,6 +191,79 @@ def test_openai_response_to_anthropic_content_null_falls_back_to_reasoning() -> 
     assert out["content"] == [{"type": "text", "text": "the answer is 42"}]
 
 
+def test_promote_reasoning_to_content_in_chat_response() -> None:
+    """OpenAI-side counterpart: when an OpenAI client gets content:null +
+    reasoning_content:<text>, the proxy must promote reasoning_content
+    → content so the client sees a non-empty response."""
+    from proxy.translation import promote_reasoning_to_content_in_chat_response
+
+    # Case 1: content is null, reasoning has text → promote
+    data = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "reasoning_content": "the answer is 42",
+            }
+        }]
+    }
+    promote_reasoning_to_content_in_chat_response(data)
+    assert data["choices"][0]["message"]["content"] == "the answer is 42"
+
+    # Case 2: content has text already → leave alone (don't overwrite)
+    data = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "real answer",
+                "reasoning_content": "thinking trace",
+            }
+        }]
+    }
+    promote_reasoning_to_content_in_chat_response(data)
+    assert data["choices"][0]["message"]["content"] == "real answer"
+
+    # Case 3: no reasoning_content → no-op
+    data = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "hi",
+            }
+        }]
+    }
+    promote_reasoning_to_content_in_chat_response(data)
+    assert data["choices"][0]["message"]["content"] == "hi"
+
+    # Case 4: empty reasoning_content → don't promote
+    data = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "reasoning_content": "",
+            }
+        }]
+    }
+    promote_reasoning_to_content_in_chat_response(data)
+    assert data["choices"][0]["message"]["content"] is None
+
+
+def test_prepare_chat_body_folds_disable_parallel_tool_use() -> None:
+    """Anthropic tool_choice with disable_parallel_tool_use must fold to
+    OpenAI parallel_tool_calls=False on the way to the OpenAI-shaped
+    upstream (T2)."""
+    from proxy.translation import prepare_chat_body
+    body = {
+        "model": "x",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"name": "t", "description": "d", "input_schema": {"type": "object"}}],
+        "tool_choice": {"type": "auto", "disable_parallel_tool_use": True},
+    }
+    out = prepare_chat_body(body)
+    assert out.get("parallel_tool_calls") is False, f"expected parallel_tool_calls=False, got {out.get('parallel_tool_calls')}"
+
+
 # ---------------------------------------------------------------------------
 # prepare_chat_body — basic shape
 # ---------------------------------------------------------------------------
