@@ -768,6 +768,15 @@ async def messages(request: Request) -> Response:
         extra["anthropic-beta"] = request.headers["anthropic-beta"]
 
     upstream_url = get_chat_url() if PROVIDER == "huggingface" else get_messages_url()
+
+    # HF streaming: open the upstream via iter_upstream_sse so mid-stream
+    # provider errors classify + mark the key. The non-streaming path
+    # still goes through proxy.forward (one-shot, no in-flight concerns).
+    if PROVIDER == "huggingface" and stream:
+        return await _stream_openai_to_anthropic(
+            rid, "POST", upstream_url, payload, extra
+        )
+
     resp = await proxy.forward(
         "POST",
         upstream_url,
@@ -777,31 +786,70 @@ async def messages(request: Request) -> Response:
         request_id=rid,
     )
 
-    # HF provider: convert OpenAI response → Anthropic /messages shape
-    if PROVIDER == "huggingface":
-        if not stream and isinstance(resp, Response):
-            openai_data = loads(resp.body)
-            anthropic_data = openai_response_to_anthropic(openai_data, rid=rid)
-            new_body = dumps(anthropic_data)
-            return Response(
-                content=new_body,
-                status_code=resp.status_code,
-                media_type="application/json",
-                headers={k: v for k, v in resp.headers.items() if k.lower() != "content-length"},
-            )
-        # Streaming: convert OpenAI SSE → Anthropic SSE
-        if stream:
-            return await _stream_openai_to_anthropic(
-                rid, upstream_url, payload, resp
-            )
+    # HF non-streaming: convert OpenAI response → Anthropic /messages shape
+    if PROVIDER == "huggingface" and isinstance(resp, Response):
+        openai_data = loads(resp.body)
+        anthropic_data = openai_response_to_anthropic(openai_data, rid=rid)
+        new_body = dumps(anthropic_data)
+        return Response(
+            content=new_body,
+            status_code=resp.status_code,
+            media_type="application/json",
+            headers={k: v for k, v in resp.headers.items() if k.lower() != "content-length"},
+        )
 
     return resp
 
 
 
-async def _stream_openai_to_anthropic(rid: str, upstream_url: str, payload: bytes, resp: Response) -> StreamingResponse:
-    """Stream an OpenAI SSE response from HF and re-emit as Anthropic SSE."""
-    async def translate_stream():
+async def _stream_openai_to_anthropic(
+    rid: str,
+    method: str,
+    upstream_url: str,
+    payload: bytes,
+    extra_headers: Dict[str, str],
+) -> StreamingResponse | Response:
+    """Stream an OpenAI SSE response from HF and re-emit as Anthropic SSE.
+
+    Opens the upstream via ProxyCore.iter_upstream_sse so that:
+    - mid-stream provider errors (rate_limit, concurrency, generic_error)
+      classify and mark the key (so the next request rotates off it)
+    - SSE chunk-boundary buffering is correct (frames split across httpx
+      chunks are re-assembled before translation)
+    - keepalives + connection cleanup are handled by the shared path
+    """
+    from .proxy import proxy as _proxy_singleton  # late import: avoid circular
+    key, key_idx, is_healthy = await _proxy_singleton.pool.next_key_locked()
+    if not is_healthy:
+        s = _proxy_singleton.pool.stats()
+        log.warning(
+            "req=%s all keys unhealthy (healthy=%d cooling=%d suspended=%d) — fast-failing with 503",
+            rid, s["healthy"], s["cooling"], s["suspended"],
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "message": "All upstream API keys are temporarily unavailable (cooldown/suspended). Try again shortly.",
+                    "type": "proxy_error",
+                    "code": 503,
+                }
+            },
+            headers={"x-request-id": rid},
+        )
+    key_str = _proxy_singleton.pool.get_key_string(key_idx) or ""
+    headers = _proxy_singleton._headers(key_str, extra_headers)
+    iter_or_response = await _proxy_singleton.iter_upstream_sse(
+        method, upstream_url, headers, payload, key_idx, rid,
+    )
+
+    # iter_upstream_sse returns a Response on upstream failure (caller
+    # returns it directly) and an AsyncIterator on success.
+    if isinstance(iter_or_response, Response):
+        return iter_or_response
+    frame_iter = iter_or_response
+
+    async def translate_stream() -> AsyncIterator[bytes]:
         # Yield the message_start scaffolding.  Block lifecycles (text /
         # thinking / tool_use) are managed inside openai_sse_to_anthropic_sse
         # so reasoning_content and text deltas get distinct Anthropic content
@@ -832,20 +880,17 @@ async def _stream_openai_to_anthropic(rid: str, upstream_url: str, payload: byte
             "tool_blocks": {},
         }
 
-        # Stream from upstream (proxy.forward already returned a StreamingResponse).
-        # The caller has already filtered [DONE] at the proxy layer.
-        async for raw in resp.body_iterator:
-            if not raw:
-                continue
-            frame = raw.strip()
-            if not frame:
-                continue
+        # iter_upstream_sse yields raw SSE frames (after chunk-buffering and
+        # mid-stream error classification). [DONE] is filtered upstream on
+        # the Anthropic translation path.
+        async for frame in frame_iter:
+            # frame is raw bytes like b"data: {...}\n\n" — extract payload
             data_line = None
             for line in frame.split(b"\n"):
                 if line.startswith(b"data:"):
                     data_line = line[5:].strip()
                     break
-            if data_line is None or data_line == b"[DONE]":
+            if not data_line or data_line == b"[DONE]":
                 continue
             try:
                 chunk = loads(data_line)
@@ -880,7 +925,11 @@ async def _stream_openai_to_anthropic(rid: str, upstream_url: str, payload: byte
     return StreamingResponse(
         translate_stream(),
         media_type="text/event-stream",
-        headers={"x-request-id": rid},
+        headers={
+            "x-request-id": rid,
+            "cache-control": "no-cache, no-transform",
+            "x-accel-buffering": "no",
+        },
     )
 
 

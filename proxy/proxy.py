@@ -818,8 +818,6 @@ class ProxyCore:
 
                         frame_error = _classify_sse_frame(frame)
                         if frame_error is not None:
-                            stream_error = True
-                            stream_error_reason = f"provider_error/{frame_error['kind']}"
                             log.warning(
                                 "req=%s key_idx=%d mid-stream provider error kind=%s type=%s: %s",
                                 request_id,
@@ -846,15 +844,32 @@ class ProxyCore:
                                 frame_kind=frame_error["kind"],
                             )
 
-                            # Do NOT yield the raw error frame to the client — it
-                            # confuses Anthropic/OpenAI SDKs (they parse it as a
-                            # valid chunk and then mismatch final usage). Just mark
-                            # the key unhealthy and return; the finally block
-                            # synthesizes message_stop for is_messages streams so
-                            # the Anthropic client doesn't hang in "Thought for…".
-                            # The next request will rotate off this key via
-                            # next_key()'s cooldown skip.
-                            return
+                            # Split mid-stream errors by severity:
+                            # - HARD (generic_error / rate_limit / concurrency
+                            #   / overloaded): per user direction 2026-09-01,
+                            #   mark the key + return immediately. The failing
+                            #   request dies; the failing key is quarantined;
+                            #   the next request rotates to a healthy key via
+                            #   next_key()'s cooldown skip. Bytes already on
+                            #   the wire can't be unsent — clients see a
+                            #   clean SSE EOF and retry at their own layer.
+                            # - SOFT (context_length / idle_timeout): still
+                            #   mark the key for cooldown (avoid hammering),
+                            #   but DON'T set stream_error. Fall through so
+                            #   the finally synthesizes a normal message_stop
+                            #   — Anthropic SDKs need it to finalize parsing
+                            #   and won't hang in "Thought for…".
+                            _HARD_MID_STREAM_KINDS = frozenset({
+                                "generic_error", "rate_limit",
+                                "concurrency", "overloaded",
+                            })
+                            if frame_error["kind"] in _HARD_MID_STREAM_KINDS:
+                                stream_error = True
+                                stream_error_reason = f"provider_error/{frame_error['kind']}"
+                                return
+                            # SOFT: leave stream_error=False so the finally
+                            # emits message_stop and we look like a clean
+                            # tail to the client.
 
                         if is_messages and b"message_stop" in frame:
                             saw_message_stop = True
