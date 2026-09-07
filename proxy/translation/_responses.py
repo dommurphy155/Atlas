@@ -15,6 +15,8 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Optional
 
+from ..config import get_default_model
+
 
 # ---------------------------------------------------------------------------
 # Finish reason & usage (response path)
@@ -146,7 +148,7 @@ def openai_response_to_anthropic(data: Dict[str, Any], *, rid: str = "") -> Dict
         "id": data.get("id") or rid or f"msg_{uuid.uuid4().hex[:12]}",
         "type": "message",
         "role": "assistant",
-        "model": data.get("model", ""),
+        "model": get_default_model(),
         "content": content_blocks + tool_blocks,
         "stop_reason": _map_openai_finish_reason_to_anthropic(choice.get("finish_reason")),
         "stop_sequence": None,

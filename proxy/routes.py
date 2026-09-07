@@ -457,7 +457,7 @@ async def responses_api(request: Request) -> Response:
 
     response_id = f"resp_{rid}"
     item_id = f"msg_{rid}"
-    model_name = body.get("model")
+    model_name = get_default_model()
 
     async def translate_stream():
         text_so_far = []
