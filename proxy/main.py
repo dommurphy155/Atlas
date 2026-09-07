@@ -13,6 +13,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+# Set by main() after _pick_port() resolves the actual bind port (which may
+# differ from the configured LISTEN_PORT if 8777 is occupied). Read by the
+# lifespan startup log so it reports the same port uvicorn actually bound
+# to — prevents the "INFO listening on 8777 / uvicorn on 57027" mismatch.
+_BOUND_PORT: int = 0
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -161,7 +167,7 @@ async def lifespan(app: FastAPI):
         "Proxy listening on http://%s:%d  (keys=%d, healthy=%d, "
         "provider=%s, default_model=%s, force=%s)",
         LISTEN_HOST,
-        LISTEN_PORT,
+        _BOUND_PORT or LISTEN_PORT,
         pool.stats()["total"],
         pool.stats()["healthy"],
         provider.name,
@@ -315,6 +321,11 @@ def main() -> None:
         _bound.write_text(str(chosen_port))
     except OSError:
         pass
+
+    # Expose the actually-bound port to the lifespan startup log so it
+    # agrees with uvicorn's own banner (which prints the bound port).
+    global _BOUND_PORT
+    _BOUND_PORT = chosen_port
 
     # Pass the app object, not "proxy.main:app" — the string form makes uvicorn
     # re-import this module while __main__ already ran it, double-executing all
