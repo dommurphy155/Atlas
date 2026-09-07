@@ -265,55 +265,133 @@ app.add_middleware(
 app.include_router(routes.router)
 
 
-def _pick_port(preferred: int) -> int:
-    """Return ``preferred`` if it's free; otherwise pick a random free
-    TCP port in the high range. NEVER touches the existing occupant —
-    we don't own whatever process is on ``preferred`` so we just yield.
-    """
-    import socket
+def _force_free_port(port: int, *, max_attempts: int = 10) -> bool:
+    """Ensure ``port`` is free for binding by identifying and killing any
+    process holding it.
 
-    def _free(p: int) -> bool:
+    Atlas MUST own its configured port (8777 by default). On restart the
+    previous atlas-proxy process can linger (e.g. systemd kill timeout,
+    leftover from a crashed run), and a stale occupant must NOT cause us
+    to silently bind a random port — that leaves the old (stale) process
+    serving requests while health checks ping the new random port.
+
+    Strategy:
+      1. ss/lsof lookup the PID holding the port.
+      2. SIGTERM, wait up to 2s for it to die.
+      3. SIGKILL if still alive.
+      4. Retry the bind. After ``max_attempts`` failures, raise.
+    """
+    import os
+    import signal
+    import socket
+    import subprocess
+    import time
+
+    def _bind_ok() -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
-                s.bind(("0.0.0.0", p))
+                s.bind(("0.0.0.0", port))
                 return True
             except OSError:
                 return False
 
-    if _free(preferred):
-        return preferred
+    for attempt in range(max_attempts):
+        if _bind_ok():
+            return True
 
-    # Try a handful of random high ports. Using random makes us unlikely
-    # to collide with other atlas forks doing the same dance on the same
-    # host, but the loop guarantees we land on something free.
-    import random
-    for _ in range(50):
-        candidate = random.randint(49152, 65535)
-        if _free(candidate):
-            return candidate
+        # Find PID(s) on the port. `ss -tlnp` requires root for the PID
+        # column; `fuser -n tcp PORT` works without root and prints PIDs.
+        pids: set[int] = set()
+        try:
+            r = subprocess.run(
+                ["fuser", "-n", "tcp", str(port)],
+                capture_output=True, text=True, timeout=3,
+            )
+            # fuser prints PIDs space-separated on stdout; some distros
+            # put them on stderr. Accept either.
+            for stream in (r.stdout, r.stderr):
+                for tok in stream.split():
+                    if tok.isdigit():
+                        pids.add(int(tok))
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        # Fallback: parse ss output (works on Ubuntu where fuser may be absent).
+        if not pids:
+            try:
+                r = subprocess.run(
+                    ["ss", "-tlnp", f"sport = :{port}"],
+                    capture_output=True, text=True, timeout=3,
+                )
+                for line in r.stdout.splitlines()[1:]:
+                    for tok in line.split():
+                        if tok.startswith("pid="):
+                            try:
+                                pids.add(int(tok[4:].rstrip(",)")))
+                            except ValueError:
+                                pass
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
 
-    # Last resort: ask the OS for any free port (kernel-assigned).
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("0.0.0.0", 0))
-        return s.getsockname()[1]
+        if not pids:
+            # No occupant we can identify — wait briefly and retry in case
+            # something is in TIME_WAIT.
+            time.sleep(0.25)
+            continue
+
+        for pid in pids:
+            # Never kill ourselves or our parent process tree.
+            if pid == os.getpid() or pid == os.getppid():
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+            except PermissionError:
+                # Not our process to kill — refuse rather than fail silently.
+                raise PermissionError(
+                    f"port {port} held by pid {pid} which we cannot kill"
+                )
+
+        # Wait up to 2s for graceful exit, then SIGKILL.
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            alive = False
+            for pid in pids:
+                try:
+                    os.kill(pid, 0)
+                    alive = True
+                except ProcessLookupError:
+                    pass
+            if not alive:
+                break
+            time.sleep(0.1)
+        else:
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            time.sleep(0.2)
+
+    return _bind_ok()
 
 
 def main() -> None:
     import uvicorn
 
-    # If our preferred port is occupied by something else (e.g. another
-    # atlas install, prod, or a stale dev process), pick a random free
-    # one instead of killing the occupant. The chosen port is written
-    # to data/bound_port so the installer's health check and `atlas
-    # status` know where to find us, since LISTEN_PORT in config may
-    # not match the actual bind port.
-    chosen_port = _pick_port(LISTEN_PORT)
-    if chosen_port != LISTEN_PORT:
-        import logging
-        logging.getLogger("proxy").warning(
-            "LISTEN_PORT %d is occupied; falling back to %d (occupant untouched)",
-            LISTEN_PORT, chosen_port,
+    # Atlas MUST own its configured port. If something else (a stale
+    # atlas-proxy process, a previous test run that crashed, etc.) is
+    # holding LISTEN_PORT, identify and kill it before we bind. We never
+    # silently fall back to a random port — that would leave the stale
+    # process serving requests while the installer/health checks probe
+    # the new random port, masking the real failure.
+    if not _force_free_port(LISTEN_PORT):
+        raise SystemExit(
+            f"could not free port {LISTEN_PORT} after repeated attempts; "
+            f"check what is holding it (e.g. `ss -tlnp sport = :{LISTEN_PORT}`) "
+            f"and kill it manually"
         )
+    chosen_port = LISTEN_PORT
     try:
         from pathlib import Path as _P
         _bound = _P(__file__).resolve().parent.parent / "data" / "bound_port"

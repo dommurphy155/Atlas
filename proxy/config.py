@@ -228,7 +228,7 @@ def _load_or_default_model() -> str:
     model = _load_runtime_model()
     if model:
         return model
-    return _env("ATLAS_OPENROUTER_MODEL", _env("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash-fin:free"))
+    return _env("ATLAS_OPENROUTER_MODEL", _env("OPENROUTER_MODEL", "minimax/minimax-m3:free"))
 
 
 OPENROUTER_MODEL: str = _load_or_default_model()
