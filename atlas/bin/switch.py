@@ -30,7 +30,27 @@ if TYPE_CHECKING:
 # Constants
 # ---------------------------------------------------------------------------
 
-REPO_ROOT = Path("/root/atlas_proxy")
+def _find_repo_root() -> Path:
+    """Walk up from this file to find the proxy repo, like atlas CLI does.
+
+    Falls back to the hardcoded dev path so behaviour on a developer's
+    box where the symlink chain doesn't reach the repo still works.
+    Without this fallback the previous hardcoded `/root/atlas_proxy`
+    leaked into any clone (e.g. `~/Atlas` on a test box) and the
+    `.cache` directory was created in the WRONG repo — then permissions
+    denied when the test user tried to write into the dev box's path.
+    """
+    here = Path(__file__).resolve().parent  # atlas/bin
+    candidate = here.parent.parent            # repo root
+    if (candidate / "proxy" / "main.py").is_file():
+        return candidate
+    cwd = Path.cwd().resolve()
+    if (cwd / "proxy" / "main.py").is_file():
+        return cwd
+    return Path("/root/atlas_proxy")
+
+
+REPO_ROOT = _find_repo_root()
 RUNTIME_PROVIDER_FILE = REPO_ROOT / "data" / "proxy_data" / "runtime_provider.json"
 PREFS_FILE = REPO_ROOT / ".atlas_preferences.json"
 
