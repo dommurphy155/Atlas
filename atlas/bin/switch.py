@@ -359,12 +359,17 @@ def _slug(label: str) -> str:
 def _do_restart() -> None:
     """Restart the proxy to pick up the new model.
 
-    Calls `atlas2 stop` then `atlas2 start` via subprocess.  This avoids
-    trying to re-import the atlas CLI (which lives at `atlas/bin/atlas`
-    with no .py extension and would re-run its bootstrap).
+    Calls `<bin> stop` then `<bin> start` via subprocess, where `<bin>`
+    is the configured CLI name (`ATLAS_BIN_NAME`, defaults to `atlas`).
+    The dev-box fork sets `ATLAS_BIN_NAME=atlas2` to coexist with prod's
+    `atlas` command; test installs leave it default. This avoids trying
+    to re-import the atlas CLI (which lives at `atlas/bin/atlas` with
+    no .py extension and would re-run its bootstrap).
     """
+    import os
     import subprocess
-    for cmd in (["atlas2", "stop"], ["atlas2", "start"]):
+    bin_name = os.environ.get("ATLAS_BIN_NAME", "atlas")
+    for cmd in ([bin_name, "stop"], [bin_name, "start"]):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
             CONSOLE.print(f"[red]{' '.join(cmd)} failed (exit {result.returncode}):[/red]")
