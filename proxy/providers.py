@@ -272,9 +272,12 @@ def _build_openrouter() -> Provider:
         "ATLAS_OPENROUTER_BASE_URL",
         os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
     )
+    # Default to the same env-fallback chain config._load_or_default_model()
+    # uses, so a fresh install with no runtime_provider.json never lands
+    # on a dead OpenRouter slug (z-ai/glm-5.2:free 404s on OpenRouter).
     default_model = os.environ.get(
         "ATLAS_OPENROUTER_MODEL",
-        os.environ.get("OPENROUTER_MODEL", "z-ai/glm-5.2:free"),
+        os.environ.get("OPENROUTER_MODEL", "minimax/minimax-m3:free"),
     )
     return Provider(
         name="openrouter",
