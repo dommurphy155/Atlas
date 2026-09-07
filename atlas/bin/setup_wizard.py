@@ -459,14 +459,26 @@ def _install_hermes() -> bool:
 
 
 def _install_pi() -> bool:
-    """Pi — official npm package.
+    """Pi — official installer (preferred) + npm fallback.
 
     Source: https://www.npmjs.com/package/@earendil-works/pi-coding-agent
+    Source: https://pi.dev/install.sh
     """
     if shutil.which("npm") is None:
         return False
+
+    # 1. Official installer script (Linux/macOS)
+    if shutil.which("curl") and detect_os() in ("linux", "macos"):
+        r = subprocess.run(
+            ["bash", "-c", "curl -fsSL https://pi.dev/install.sh | sh"],
+            capture_output=True, text=True, timeout=300,
+        )
+        if r.returncode == 0 and shutil.which("pi"):
+            return True
+
+    # 2. npm fallback with --ignore-scripts (recommended by Pi docs)
     r = subprocess.run(
-        ["npm", "install", "-g", "@earendil-works/pi-coding-agent"],
+        ["npm", "install", "-g", "--ignore-scripts", "@earendil-works/pi-coding-agent"],
         capture_output=True, text=True, timeout=300,
     )
     return r.returncode == 0 and shutil.which("pi") is not None
@@ -597,7 +609,7 @@ def _configure_codex(base_url: str, dummy_key: str) -> tuple[bool, str]:
             with rc_path.open("a") as fh:
                 fh.write(f"\n{marker}\nexport OPENAI_API_KEY={dummy_key}\n")
 
-    msg = f"wrote {cfg} (openai_base_url={atlas_url}) + shell rc (OPENAI_API_KEY)"
+    msg = f"wrote {cfg} (openai_base_url={atlas_url})"
     if backup:
         msg += f" [backup: {backup.name}]"
     return True, msg
@@ -809,13 +821,24 @@ def _smoke_pi(_base_url: str, _dummy_key: str) -> tuple[bool, str, str]:
 
 
 def _smoke_hermes(_base_url: str, _dummy_key: str) -> tuple[bool, str, str]:
-    """Hermes — no documented safe non-interactive one-shot CLI command.
+    """Hermes — one-shot via `hermes -z` (documented scripted mode).
 
-    The CLI is interactive (`hermes chat`) and has no `exec` / `-p` mode
-    that matches Claude Code / Codex / Pi. Fall back to --version + a clear
-    caveat that end-to-end wasn't tested.
+    Source: https://hermes-agent.nousresearch.com/docs/reference/cli-commands
+    `hermes -z 'PROMPT' --provider openrouter --model ...` is the
+    purest one-shot entry point: single prompt in, final text out,
+    nothing else on stdout or stderr.
+    We pass --provider openrouter so the smoke goes through Atlas
+    (the proxy), not Hermes's own default provider.
     """
-    return _smoke_via_version_only("hermes")
+    if shutil.which("hermes") is None:
+        return False, "hermes not on PATH", "no fallback possible"
+    ok, summary = _run_capture(
+        "hermes",
+        ["-z", SMOKE_TEST_PROMPT, "--provider", "openrouter",
+         "--model", "minimax/minimax-m3:free"],
+        timeout=120,
+    )
+    return ok, summary, ""
 
 
 # ===========================================================================
