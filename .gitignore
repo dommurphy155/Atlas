@@ -92,3 +92,9 @@ dist/
 *.db
 *.pid
 *.sock
+
+# ─── NVIDIA provider ──────────────────────────────────────────────────
+data/nvidia_data/nvapi_keys.txt
+
+# ─── Runtime bind port ────────────────────────────────────────────────
+data/bound_port
