@@ -81,6 +81,10 @@ HF_DEAD_KEYS_FILE: str = _env(
     "ATLAS_HF_DEAD_KEYS_FILE",
     str(_root_dir / "data" / "huggingface_data" / "dead_hf_keys.txt"),
 )
+NVIDIA_KEY_FILE: str = _env(
+    "ATLAS_NVIDIA_KEYS_FILE",
+    str(_root_dir / "data" / "nvidia_data" / "nvapi_keys.txt"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -129,9 +133,35 @@ HF_CONFIG = Provider(
 )
 register_provider(HF_CONFIG, allow_override=True)
 
+# Build NVIDIA provider (avoids circular import with providers.py).
+# Defined here because _build_nvidia() references NVIDIA_KEY_FILE
+# from this module, and NVIDIA_CONFIG must exist before PROVIDERS.
+def _build_nvidia() -> Provider:
+    from .providers import Provider, ProviderCapability, PoolMode
+    return Provider(
+        name="nvidia",
+        label="NVIDIA",
+        aliases=("nv",),
+        base_url=os.environ.get(
+            "ATLAS_NVIDIA_BASE_URL",
+            "https://integrate.api.nvidia.com/v1",
+        ),
+        key_prefix="nvapi-",
+        capabilities=ProviderCapability.OPENAI_COMPAT,
+        pool_mode=PoolMode.PARTIAL_STICKY,
+        default_model="meta/llama-3.1-70b-instruct",
+    )
+
+NVIDIA_CONFIG = _build_nvidia()
+NVIDIA_CONFIG = Provider(
+    **{**NVIDIA_CONFIG.__dict__, "key_file": NVIDIA_KEY_FILE}
+)
+register_provider(NVIDIA_CONFIG, allow_override=True)
+
 PROVIDERS: dict[str, Provider] = {
     "openrouter": OPENROUTER_CONFIG,
     "huggingface": HF_CONFIG,
+    "nvidia": NVIDIA_CONFIG,
 }
 
 
@@ -173,8 +203,8 @@ def _load_runtime_provider() -> str:
                 pass  # stat failure handled below
             data = _json.loads(p.read_text(encoding="utf-8"))
             provider = data.get("provider", "").lower()
-            if provider in ("huggingface", "hf", "openrouter", "or"):
-                return "huggingface" if provider in ("huggingface", "hf") else "openrouter"
+            if provider in ("huggingface", "hf", "openrouter", "or", "nvidia", "nv"):
+                return "huggingface" if provider in ("huggingface", "hf") else "nvidia" if provider in ("nvidia", "nv") else "openrouter"
     except Exception as e:
         log.warning("Failed to load runtime provider from %s: %s", RUNTIME_PROVIDER_FILE, e)
     return _env("ATLAS_PROVIDER", "openrouter")
@@ -333,7 +363,6 @@ LISTEN_HOST: str = _env("LISTEN_HOST", "0.0.0.0")
 # Forked proxy defaults to 8777 — the primary atlas proxy owns 8788.
 # Override with LISTEN_PORT env var if you need a different port.
 LISTEN_PORT: int = _env_int("LISTEN_PORT", 8777)
-
 
 # ---------------------------------------------------------------------------
 # Connection pool / timeouts

@@ -326,6 +326,28 @@ def _build_huggingface() -> Provider:
     )
 
 
+def _build_nvidia() -> Provider:
+    """NVIDIA NIM: OpenAI-compatible inference, no key required.
+
+    NVIDIA's NIM endpoints use the `nvapi-` key prefix and the
+    `/v1/chat/completions` endpoint. The key file is patched in
+    by ``proxy.config`` after construction (like HF_CONFIG).
+    """
+    return Provider(
+        name="nvidia",
+        label="NVIDIA",
+        aliases=("nv",),
+        base_url=os.environ.get(
+            "ATLAS_NVIDIA_BASE_URL",
+            "https://integrate.api.nvidia.com/v1",
+        ),
+        key_prefix="nvapi-",
+        capabilities=ProviderCapability.OPENAI_COMPAT,
+        pool_mode=PoolMode.PARTIAL_STICKY,
+        default_model="meta/llama-3.1-70b-instruct",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------

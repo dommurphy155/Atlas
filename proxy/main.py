@@ -31,6 +31,7 @@ from .config import (
     LISTEN_HOST,
     LISTEN_PORT,
     LOG_LEVEL,
+    NVIDIA_KEY_FILE,
     SYSTEM_PROMPT_OVERRIDE_FILE,
     get_default_model,
     get_force_default_model,
@@ -66,10 +67,13 @@ def _load_provider_keys() -> list[str]:
     For HuggingFace, loads ``hf_keys.txt`` directly. Dead keys are
     never in the active file because ``retire_and_remove_hf_key()``
     removes them on retirement, and ``migrate_hf_active_keys()`` cleans
-    up any orphans at startup. For OpenRouter, returns keys from
-    ``KEY_FILE`` unchanged (preserving existing behaviour).
+    up any orphans at startup. For NVIDIA, loads ``nvapi_keys.txt``.
+    For OpenRouter, returns keys from ``KEY_FILE`` unchanged
+    (preserving existing behaviour).
     """
     provider = get_active_provider()
+    if provider.name == "nvidia":
+        return load_keys(NVIDIA_KEY_FILE)
     return load_keys(provider.key_file)
 
 
@@ -79,8 +83,14 @@ _load_active_keys = _load_provider_keys
 
 def _reload_keys_for_provider() -> list[str]:
     """Reload keys, respecting dead-key exclusion for HF and the
-    OpenRouter fallback file when the primary is empty."""
+    OpenRouter fallback file when the primary is empty.
+
+    NVIDIA keys are loaded directly from the NVIDIA key file
+    and don't need fallback handling.
+    """
     provider = get_active_provider()
+    if provider.name == "nvidia":
+        return _load_provider_keys()
     if provider.has(ProviderCapability.HF_QUOTA_BODY_MARKERS):
         return _load_provider_keys()
     # OpenRouter-style provider: use fallback if primary is empty
