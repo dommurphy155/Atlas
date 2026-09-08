@@ -359,6 +359,7 @@ install_systemd_system() {
     # success messages below for ops that didn't actually succeed.
     if ! write_unit "$unit"; then
         soft_fail "could not write $unit — aborting systemd install"
+        return 1
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
         dry "${_sudo[*]} systemctl daemon-reload"
@@ -366,19 +367,24 @@ install_systemd_system() {
         dry "${_sudo[*]} systemctl start $SERVICE_NAME.service"
         ok "would enable + start $SERVICE_NAME.service (dry-run)"
         info "logs with:    journalctl -u $SERVICE_NAME -f"
+        return 0
     else
         if ! "${_sudo[@]}" systemctl daemon-reload 2>/dev/null; then
             soft_fail "systemctl daemon-reload failed"
+            return 1
         fi
         if ! "${_sudo[@]}" systemctl enable "$SERVICE_NAME.service" >/dev/null 2>&1; then
             soft_fail "systemctl enable failed"
+            return 1
         fi
         ok "enabled $SERVICE_NAME.service"
         if ! "${_sudo[@]}" systemctl start "$SERVICE_NAME.service" 2>/dev/null; then
             soft_fail "systemctl start failed"
+            return 1
         fi
         ok "started $SERVICE_NAME.service"
         info "logs with:    journalctl -u $SERVICE_NAME -f"
+        return 0
     fi
 }
 
@@ -390,6 +396,25 @@ install_systemd_user() {
     dir="$(user_unit_dir)"
     unit="$(user_unit_path)"
 
+    # Validate that the user systemd bus is actually reachable
+    # before attempting anything. Without XDG_RUNTIME_DIR or a
+    # working loginctl session, systemctl --user will hang or
+    # fail silently — and the installer must not print false
+    # success messages.
+    local xdg="${XDG_RUNTIME_DIR:-}"
+    if [[ -z "$xdg" ]]; then
+        xdg="/run/user/$(id -u)"
+    fi
+    if [[ ! -d "$xdg" ]]; then
+        soft_fail "user systemd not available (no XDG_RUNTIME_DIR at $xdg)"
+        return 1
+    fi
+    if ! systemctl --user is-active >/dev/null 2>&1 && \
+       ! systemctl --user status >/dev/null 2>&1; then
+        soft_fail "systemctl --user cannot communicate with the user bus"
+        return 1
+    fi
+
     if [[ "$DRY_RUN" -eq 1 ]]; then
         dry "mkdir -p $dir"
         dry "write user unit: $unit"
@@ -398,18 +423,32 @@ install_systemd_user() {
         ok "would enable $SERVICE_NAME.service (user, dry-run)"
         info "start with:   systemctl --user start $SERVICE_NAME"
         info "logs with:    journalctl --user -u $SERVICE_NAME -f"
+        return 0
     else
         mkdir -p "$dir"
         # Only the user-scoped marker — avoids clobbering a hand-written unit.
-        write_unit "$unit"
-        systemctl --user daemon-reload
-        systemctl --user enable "$SERVICE_NAME.service" >/dev/null
+        if ! write_unit "$unit"; then
+            soft_fail "could not write user unit — aborting"
+            return 1
+        fi
+        if ! systemctl --user daemon-reload 2>/dev/null; then
+            soft_fail "systemctl --user daemon-reload failed"
+            return 1
+        fi
+        if ! systemctl --user enable "$SERVICE_NAME.service" >/dev/null 2>&1; then
+            soft_fail "systemctl --user enable failed"
+            return 1
+        fi
         ok "enabled $SERVICE_NAME.service (user)"
 
-        systemctl --user start "$SERVICE_NAME.service"
+        if ! systemctl --user start "$SERVICE_NAME.service" 2>/dev/null; then
+            soft_fail "systemctl --user start failed"
+            return 1
+        fi
         ok "started $SERVICE_NAME.service (user)"
 
         info "logs with:    journalctl --user -u $SERVICE_NAME -f"
+        return 0
     fi
 }
 

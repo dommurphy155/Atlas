@@ -77,11 +77,33 @@ class RuntimeEnv:
 
     @property
     def systemd_user_usable(self) -> bool:
-        return (
-            self.os == "linux"
-            and self.has_systemctl
-            and self.has_user_systemd
-        )
+        # Root can also use systemd --user if a user bus exists
+        # (e.g. via logind). Non-root needs XDG_RUNTIME_DIR set.
+        if self.os != "linux" or not self.has_systemctl:
+            return False
+        if not self.has_user_systemd:
+            return False
+        # Verify the user bus is actually reachable by checking
+        # if the runtime directory exists and systemctl --user
+        # can communicate with it.
+        if self.is_root:
+            # Root: check for a user bus (logind session).
+            # XDG_RUNTIME_DIR may or may not be set for root.
+            xdg = os.environ.get("XDG_RUNTIME_DIR", "")
+            if not xdg:
+                try:
+                    xdg = f"/run/user/{os.getuid()}"
+                except AttributeError:
+                    return False
+            return Path(xdg).is_dir() and self.has_loginctl
+        # Non-root: XDG_RUNTIME_DIR must be set and valid.
+        xdg = os.environ.get("XDG_RUNTIME_DIR", "")
+        if not xdg:
+            try:
+                xdg = f"/run/user/{os.getuid()}"
+            except AttributeError:
+                return False
+        return bool(xdg and Path(xdg).is_dir())
 
     @property
     def tmux_usable(self) -> bool:
@@ -898,12 +920,18 @@ def _candidate_modes(env: RuntimeEnv) -> list[RuntimeMode]:
         candidates: list[RuntimeMode] = []
         if env.systemd_system_usable:
             candidates.append("systemd")
-        if env.systemd_user_usable:
+        # systemd-user is a valid fallback even for root
+        # if the user bus is actually reachable.
+        if env.systemd_user_usable and env.systemd_system_usable:
             candidates.append("systemd-user")
         if env.tmux_usable:
             candidates.append("tmux")
         if env.nohup_usable:
             candidates.append("nohup")
+        # If systemd-system failed, systemd-user might still work
+        # as a fallback (e.g., root without a working systemd bus).
+        if env.systemd_user_usable and "systemd" not in candidates:
+            candidates.append("systemd-user")
         return candidates
     if env.tmux_usable:
         return ["tmux"]
