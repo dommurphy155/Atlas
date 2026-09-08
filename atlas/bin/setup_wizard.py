@@ -926,10 +926,39 @@ def _pick_provider() -> str | None:
     return PROVIDERS[int(raw) - 1][0]
 
 
+_PROVIDER_KEY_FILES = {
+    "openrouter": "data/openrouter_data/openroute_keys.txt",
+    "nvidia": "data/nvidia_data/nvapi_keys.txt",
+    "huggingface": "data/huggingface_data/hf_keys.txt",
+}
+
+
 def _proxy_key_file() -> Path:
+    """Return the key file for the currently selected provider.
+
+    Uses the existing runtime_provider.json to pick the right file
+    so keys are saved to the provider-specific location rather
+    than always defaulting to KEY_FILE (OpenRouter).
+    """
     sys.path.insert(0, str(REPO_ROOT))
-    from proxy.config import KEY_FILE  # type: ignore
-    return Path(KEY_FILE)
+    try:
+        from proxy.config import KEY_FILE  # type: ignore
+    except Exception:
+        KEY_FILE = str(REPO_ROOT / "data" / "openrouter_data" / "openroute_keys.txt")
+
+    rp_file = REPO_ROOT / "data" / "proxy_data" / "runtime_provider.json"
+    provider = "openrouter"
+    if rp_file.exists():
+        try:
+            rp = json.loads(rp_file.read_text())
+            p = rp.get("provider", "").lower()
+            if p in _PROVIDER_KEY_FILES:
+                provider = p
+        except Exception:
+            pass
+
+    rel = _PROVIDER_KEY_FILES.get(provider, KEY_FILE)
+    return REPO_ROOT / rel
 
 
 def _existing_keys(path: Path) -> set[str]:
