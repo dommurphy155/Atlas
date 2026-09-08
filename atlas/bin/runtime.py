@@ -789,8 +789,21 @@ def install_runtime(repo_root: Path, venv_py: Path,
     env = detect_env()
     candidates = _candidate_modes(env)
 
+    def _emit(msg: str) -> None:
+        # Progress lines are consumed by the shell installer (which indents
+        # them) and shown raw when invoked from the Python wizard.
+        print(msg, flush=True)
+
+    _emit(f"Detecting runtime — candidates: {', '.join(candidates) or 'none'}")
+
     last_message = "no runtime candidates available"
+    first = True
     for mode in candidates:
+        if first:
+            _emit(f"Runtime: {mode}")
+            first = False
+        else:
+            _emit(f"Falling back: {mode}")
         runtime = build_runtime(mode, env, repo_root, venv_py, service_name)
         installer = getattr(runtime, "install", None)
         try:
@@ -799,6 +812,7 @@ def install_runtime(repo_root: Path, venv_py: Path,
             ok, message = False, f"{type(exc).__name__}: {exc}"
 
         if not ok:
+            _emit(f"  ! {mode} failed: {message}")
             # Best-effort cleanup before falling back. Never raises.
             try:
                 runtime.cleanup()
@@ -810,6 +824,7 @@ def install_runtime(repo_root: Path, venv_py: Path,
         # Install/start succeeded — now verify the proxy is actually healthy.
         healthy, health_msg = check_health(repo_root=repo_root)
         if not healthy:
+            _emit(f"  ! {mode} unhealthy: {health_msg}")
             try:
                 runtime.cleanup()
             except Exception:
@@ -817,12 +832,14 @@ def install_runtime(repo_root: Path, venv_py: Path,
             last_message = f"{mode}: {health_msg}"
             continue
 
+        _emit(f"  ✓ {mode} healthy: {health_msg}")
         save_runtime_choice(
             repo_root, env, mode, runtime.info.__dict__,
         )
         return mode, True, health_msg or message
 
     # Everything failed — record manual so the installer still completes.
+    _emit("! No automatic runtime manager available")
     manual_rt = build_runtime("manual", env, repo_root, venv_py, service_name)
     save_runtime_choice(
         repo_root, env, "manual", manual_rt.info.__dict__,
@@ -920,24 +937,19 @@ def _candidate_modes(env: RuntimeEnv) -> list[RuntimeMode]:
         candidates: list[RuntimeMode] = []
         if env.systemd_system_usable:
             candidates.append("systemd")
-        # systemd-user is a valid fallback even for root
-        # if the user bus is actually reachable.
-        if env.systemd_user_usable and env.systemd_system_usable:
+        if env.systemd_user_usable:
             candidates.append("systemd-user")
         if env.tmux_usable:
             candidates.append("tmux")
         if env.nohup_usable:
             candidates.append("nohup")
-        # If systemd-system failed, systemd-user might still work
-        # as a fallback (e.g., root without a working systemd bus).
-        if env.systemd_user_usable and "systemd" not in candidates:
-            candidates.append("systemd-user")
         return candidates
+    candidates = []
     if env.tmux_usable:
-        return ["tmux"]
+        candidates.append("tmux")
     if env.nohup_usable:
-        return ["nohup"]
-    return []
+        candidates.append("nohup")
+    return candidates
 
 
 def build_runtime(mode: RuntimeMode, env: RuntimeEnv, repo_root: Path,
