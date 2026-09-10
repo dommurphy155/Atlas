@@ -19,6 +19,15 @@ right now and switches the proxy to one of them in a single command.
 
 ---
 
+**Demo.** `git clone https://github.com/dommurphy155/Atlas.git && cd Atlas && ./setup/install.sh`. The installer
+auto-detects the best runtime (systemd → tmux → nohup → manual), configures your coding harness,
+imports keys, and smoke-tests the whole chain in ~10 seconds. Then `atlas switch` picks any free model
+in a single prompt.
+
+![Atlas installer demo](./docs/atlas_demo.gif)
+
+---
+
 ## What Atlas does
 
 - **Provider aggregation.** A single OpenAI-compatible endpoint
